@@ -1,0 +1,90 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: transferValidation.spec.ts >> TC-006: Transfer amount cannot exceed source account balance
+- Location: workspace\1d9e80c2-401b-4c53-b2af-e1d8ea210f6c\tests\transferValidation.spec.ts:48:5
+
+# Error details
+
+```
+Error: page.goto: net::ERR_NAME_NOT_RESOLVED at https://example.com/login
+Call log:
+  - navigating to "https://example.com/login", waiting until "load"
+
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | 
+  3  | async function loginAndNavigateToTransfer(page) {
+> 4  |   await page.goto('https://example.com/login');
+     |              ^ Error: page.goto: net::ERR_NAME_NOT_RESOLVED at https://example.com/login
+  5  |   await page.fill('#username', 'validUser');
+  6  |   await page.fill('#password', 'validPass');
+  7  |   await page.click('button[type="submit"]');
+  8  |   await expect(page).toHaveURL(/\/dashboard/);
+  9  |   await page.click('nav >> text=Transfer Money');
+  10 |   await expect(page).toHaveURL(/\/transfer/);
+  11 | }
+  12 | 
+  13 | test('TC-003: Source account selection is mandatory', async ({ page }) => {
+  14 |   await loginAndNavigateToTransfer(page);
+  15 |   // Leave source account unselected
+  16 |   // Select beneficiary and amount
+  17 |   await page.selectOption('#beneficiary', 'active-001');
+  18 |   await page.fill('#amount', '100');
+  19 |   await page.click('button:has-text("Continue")');
+  20 |   // Verify validation error
+  21 |   await expect(page.locator('text=Please select a source account')).toBeVisible();
+  22 | });
+  23 | 
+  24 | test('TC-004: Inactive beneficiary cannot be used for transfer', async ({ page }) => {
+  25 |   await loginAndNavigateToTransfer(page);
+  26 |   await page.selectOption('#sourceAccount', 'savings-123');
+  27 |   // Choose inactive beneficiary
+  28 |   await page.selectOption('#beneficiary', 'inactive-999');
+  29 |   await page.fill('#amount', '50');
+  30 |   await page.click('button:has-text("Continue")');
+  31 |   await expect(page.locator('text=Selected beneficiary is not active')).toBeVisible();
+  32 | });
+  33 | 
+  34 | test('TC-005: Transfer amount must be greater than zero', async ({ page }) => {
+  35 |   await loginAndNavigateToTransfer(page);
+  36 |   await page.selectOption('#sourceAccount', 'savings-123');
+  37 |   await page.selectOption('#beneficiary', 'active-001');
+  38 |   // Amount zero
+  39 |   await page.fill('#amount', '0');
+  40 |   await page.click('button:has-text("Continue")');
+  41 |   await expect(page.locator('text=Amount must be greater than zero')).toBeVisible();
+  42 |   // Amount negative
+  43 |   await page.fill('#amount', '-10');
+  44 |   await page.click('button:has-text("Continue")');
+  45 |   await expect(page.locator('text=Amount must be greater than zero')).toBeVisible();
+  46 | });
+  47 | 
+  48 | test('TC-006: Transfer amount cannot exceed source account balance', async ({ page }) => {
+  49 |   await loginAndNavigateToTransfer(page);
+  50 |   await page.selectOption('#sourceAccount', 'savings-123'); // balance $500 assumed
+  51 |   await page.selectOption('#beneficiary', 'active-001');
+  52 |   await page.fill('#amount', '600');
+  53 |   await page.click('button:has-text("Continue")');
+  54 |   await expect(page.locator('text=Insufficient funds')).toBeVisible();
+  55 | });
+  56 | 
+  57 | test('TC-007: Transfer amount must respect daily transfer limit', async ({ page }) => {
+  58 |   await loginAndNavigateToTransfer(page);
+  59 |   await page.selectOption('#sourceAccount', 'savings-123');
+  60 |   await page.selectOption('#beneficiary', 'active-001');
+  61 |   // User already transferred $800, limit $1000, trying $250 exceeds remaining $200
+  62 |   await page.fill('#amount', '250');
+  63 |   await page.click('button:has-text("Continue")');
+  64 |   await expect(page.locator('text=Daily transfer limit exceeded')).toBeVisible();
+  65 | });
+```

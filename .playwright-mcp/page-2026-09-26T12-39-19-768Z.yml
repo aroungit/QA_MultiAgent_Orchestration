@@ -1,0 +1,70 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - button [ref=e5] [cursor=pointer]
+      - heading "QA Agent Platform" [level=3] [ref=e7]
+  - navigation [ref=e8]:
+    - link "Runs" [ref=e9] [cursor=pointer]:
+      - /url: /
+    - link "New Run" [ref=e11] [cursor=pointer]:
+      - /url: /runs/new
+    - link "Trends" [ref=e13] [cursor=pointer]:
+      - /url: /trends
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - heading "Runs" [level=2] [ref=e18]
+        - link "New Run" [ref=e19] [cursor=pointer]:
+          - /url: /runs/new
+      - generic [ref=e23]:
+        - generic [ref=e24]: Filter by status
+        - textbox "Filter by status" [ref=e26] [cursor=pointer]: all
+      - table [ref=e27]:
+        - rowgroup [ref=e28]:
+          - row [ref=e29]:
+            - columnheader "Run ID" [ref=e30]
+            - columnheader "Status" [ref=e31]
+            - columnheader "Phase" [ref=e32]
+            - columnheader "Pass / Fail" [ref=e33]
+            - columnheader "Created" [ref=e34]
+        - rowgroup [ref=e35]:
+          - row [ref=e36]:
+            - cell [ref=e37]:
+              - link "1d9e80c2-401b-4c53-b2af-e1d8ea210f6c" [ref=e38] [cursor=pointer]:
+                - /url: /runs/1d9e80c2-401b-4c53-b2af-e1d8ea210f6c
+            - cell "failed" [ref=e39]
+            - cell "finalize_run" [ref=e42]
+            - cell "0 / 11" [ref=e43]
+            - cell "9/26/26, 12:14:45 PM" [ref=e44]
+          - row [ref=e45]:
+            - cell [ref=e46]:
+              - link "6e267b6e-5eab-4612-b1af-6a7a297121bc" [ref=e47] [cursor=pointer]:
+                - /url: /runs/6e267b6e-5eab-4612-b1af-6a7a297121bc
+            - cell "waiting_hitl" [ref=e48]
+            - cell "hitl_testcases" [ref=e51]
+            - cell "—" [ref=e52]
+            - cell "9/26/26, 11:55:11 AM" [ref=e53]
+          - row [ref=e54]:
+            - cell [ref=e55]:
+              - link "3e719453-9678-444e-ae33-99147adf50a0" [ref=e56] [cursor=pointer]:
+                - /url: /runs/3e719453-9678-444e-ae33-99147adf50a0
+            - cell "waiting_hitl" [ref=e57]
+            - cell "hitl_testcases" [ref=e60]
+            - cell "—" [ref=e61]
+            - cell "9/26/26, 11:53:57 AM" [ref=e62]
+          - row [ref=e63]:
+            - cell [ref=e64]:
+              - link "a725d535-14e6-43ed-a1f9-29bda633b6fa" [ref=e65] [cursor=pointer]:
+                - /url: /runs/a725d535-14e6-43ed-a1f9-29bda633b6fa
+            - cell "waiting_hitl" [ref=e66]
+            - cell "hitl_requirements" [ref=e69]
+            - cell "—" [ref=e70]
+            - cell "9/26/26, 11:50:07 AM" [ref=e71]
+          - row [ref=e72]:
+            - cell [ref=e73]:
+              - link "1a50e1cd-0d30-43cf-b61c-9514f94df6c3" [ref=e74] [cursor=pointer]:
+                - /url: /runs/1a50e1cd-0d30-43cf-b61c-9514f94df6c3
+            - cell "failed" [ref=e75]
+            - cell "hitl_requirements" [ref=e78]
+            - cell "—" [ref=e79]
+            - cell "9/26/26, 11:46:49 AM" [ref=e80]

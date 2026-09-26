@@ -1,0 +1,13 @@
+- generic [ref=f3e2]:
+  - banner [ref=f3e3]:
+    - generic [ref=f3e4]:
+      - button [ref=f3e5] [cursor=pointer]
+      - heading "QA Agent Platform" [level=3] [ref=f3e7]
+  - navigation [ref=f3e8]:
+    - link "Runs" [ref=f3e9] [cursor=pointer]:
+      - /url: /
+    - link "New Run" [ref=f3e11] [cursor=pointer]:
+      - /url: /runs/new
+    - link "Trends" [ref=f3e13] [cursor=pointer]:
+      - /url: /trends
+  - main [ref=f3e15]

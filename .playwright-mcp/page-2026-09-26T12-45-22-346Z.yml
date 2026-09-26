@@ -1,0 +1,30 @@
+- generic [ref=f6e2]:
+  - banner [ref=f6e3]:
+    - generic [ref=f6e4]:
+      - button [ref=f6e5] [cursor=pointer]
+      - heading "QA Agent Platform" [level=3] [ref=f6e7]
+  - navigation [ref=f6e8]:
+    - link "Runs" [ref=f6e9] [cursor=pointer]:
+      - /url: /
+    - link "New Run" [ref=f6e11] [cursor=pointer]:
+      - /url: /runs/new
+    - link "Trends" [ref=f6e13] [cursor=pointer]:
+      - /url: /trends
+  - main [ref=f6e15]:
+    - generic [ref=f6e16]:
+      - heading "Trends" [level=2] [ref=f6e17]
+      - table [ref=f6e20]:
+        - rowgroup [ref=f6e21]:
+          - row [ref=f6e22]:
+            - columnheader "Run ID" [ref=f6e23]
+            - columnheader "Total" [ref=f6e24]
+            - columnheader "Passed" [ref=f6e25]
+            - columnheader "Failed" [ref=f6e26]
+            - columnheader "Created" [ref=f6e27]
+        - rowgroup [ref=f6e28]:
+          - row [ref=f6e29]:
+            - cell "1d9e80c2-401b-4c53-b2af-e1d8ea210f6c" [ref=f6e30]
+            - cell "11" [ref=f6e31]
+            - cell "0" [ref=f6e32]
+            - cell "11" [ref=f6e33]
+            - cell "9/26/26, 12:14:45 PM" [ref=f6e34]
