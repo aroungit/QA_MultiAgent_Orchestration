@@ -14,6 +14,7 @@ export async function executeTests(state: OrchestratorStateType): Promise<Orches
     outputDir,
     cwd: REPO_ROOT,
     baseUrl: process.env.TEST_BASE_URL,
+    executionBackend: state.config.executionBackend,
   });
 
   return {

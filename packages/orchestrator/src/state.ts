@@ -41,9 +41,9 @@ export function createInitialRunState(params: {
     currentPhase: null,
     input: { rawText: params.rawText, files: params.files ?? [] },
     jeve: { valid: false },
-    requirements: {},
-    testCases: {},
-    automation: { generatedTestFiles: [] },
+    requirements: { revision: 0, regenerationHistory: [] },
+    testCases: { revision: 0, regenerationHistory: [] },
+    automation: { generatedTestFiles: [], revision: 0, regenerationHistory: [] },
     execution: {},
     config: params.config,
   };

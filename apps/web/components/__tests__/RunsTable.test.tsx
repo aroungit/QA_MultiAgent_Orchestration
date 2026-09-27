@@ -45,20 +45,22 @@ function renderWithProvider(ui: React.ReactElement) {
 describe('RunsTable', () => {
   it('renders every run by default', () => {
     renderWithProvider(<RunsTable runs={RUNS} />);
-    expect(screen.getByText('run-1')).toBeInTheDocument();
-    expect(screen.getByText('run-2')).toBeInTheDocument();
+    expect(screen.getByText('Workflow run 1')).toBeInTheDocument();
+    expect(screen.getByText('Workflow run 2')).toBeInTheDocument();
+    expect(screen.getByText('Reference: run-1')).toBeInTheDocument();
+    expect(screen.getByText('Reference: run-2')).toBeInTheDocument();
   });
 
   it('filters runs by status', async () => {
     renderWithProvider(<RunsTable runs={RUNS} />);
     const user = userEvent.setup();
 
-    const select = screen.getByRole('textbox', { name: 'Filter by status' });
+    const select = screen.getByRole('textbox', { name: 'Filter by workflow status' });
     await user.click(select);
     const listbox = await screen.findByRole('listbox');
     await user.click(within(listbox).getByText('failed'));
 
-    expect(screen.queryByText('run-1')).not.toBeInTheDocument();
-    expect(screen.getByText('run-2')).toBeInTheDocument();
+    expect(screen.queryByText('Reference: run-1')).not.toBeInTheDocument();
+    expect(screen.getByText('Reference: run-2')).toBeInTheDocument();
   });
 });

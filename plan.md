@@ -239,6 +239,105 @@ Before starting frontend work: demo the full backend flow via REST client/Postma
 
 ---
 
+## UI Correction Observations – 2026-09-27
+
+These observations refine the existing frontend phases and should be implemented incrementally with validation after each slice.
+
+- Rework the frontend so users can both enter requirements and review generated outputs in a clearer staged experience. Requirements and test cases should be viewable directly in the UI and downloadable as Markdown, JSON, and Excel where applicable.
+- Replace the current left navigation emphasis on screens with a guided stage view that explains the workflow order, highlights the active agent, and shows where each high-level subtask happens.
+- Add a user-facing light/dark theme toggle.
+- Move LLM and embeddings provider selection out of the New Run form into a Settings area, so provider configuration is managed separately from run submission.
+- Introduce rate-limit handling in the UI: when an LLM provider fails because of rate limiting, prompt the user with a decision dialog so they can switch to another configured provider.
+
+---
+
+## Enhancement Wave – Guided Review UX and Regeneration Loop
+
+**Status:** Proposed – pending approval
+**Scope:** Incremental enhancement pass on top of the implemented v1 baseline.
+**Execution rule:** Implement one enhancement phase at a time, validate it, and pause for approval before the next phase.
+
+### Enhancement 1 – App Shell Navigation, Branding, and Discoverability
+
+**Goal:** Fix the blocked left rail, restore reliable navigation actions, and make the shell easier to understand.
+
+- Make the left navigation independently scrollable so guided-flow cards remain accessible on shorter screens and during long run detail pages.
+- Ensure `Insights` and `Settings` nav actions remain clickable in both desktop and mobile layouts.
+- Add a visible branded logo/mark that communicates multiple agents collaborating on one QA flow.
+- Keep the current top stage strip visual style, but connect Stage 1-5 cards with directional arrows so the workflow reads as a single progression.
+- Replace the top-level `Run {id}` heading with user-facing wording such as `QA review workflow` or `Current orchestration run`, while keeping the run id as a secondary reference below it.
+- Surface a direct, obvious entry point to the trends dashboard from the shell and run detail context.
+
+**Checkpoint:** Manual UI validation on desktop and laptop-height viewports confirms that the navbar scrolls, `Insights` and `Settings` navigate correctly, the branding is visible, and the trends entry point is discoverable.
+
+### Enhancement 2 – Expandable Stage Panels and Review Ergonomics
+
+**Goal:** Make dense run detail content easier to navigate without losing the current high-value stage overview.
+
+- Convert each major stage pane on the run detail page into an expandable/collapsible section.
+- Preserve the current Stage 1-5 overview at the top, but allow each detailed pane below to be expanded only when needed.
+- Default expansion behavior should prioritize the active or waiting-for-review stage while letting completed stages collapse cleanly.
+- Keep artifact download links and structured previews available inside each expanded pane.
+
+**Checkpoint:** A run with requirements, test cases, automation, and execution data can be reviewed with only one stage expanded at a time and without excessive vertical scrolling.
+
+### Enhancement 3 – Trends Dashboard Visibility and Run History Clarity
+
+**Goal:** Make the insights experience visible, actionable, and understandable from the main workflow.
+
+- Upgrade the existing trends page into an explicit `Trend Dashboard` presentation, not just a generic trends screen.
+- Add summary cards or a headline section so the page immediately communicates pass/fail movement and recent run outcomes.
+- Improve naming in runs history and run detail surfaces so internal ids are secondary to user-understandable labels.
+- Review the home/history view and related labels to ensure users can find past runs and jump into the dashboard without relying on implementation knowledge.
+
+**Checkpoint:** A first-time user can identify where to find historical runs and where to open the trend dashboard within one click from the main shell.
+
+### Enhancement 4 – HITL Rejection Feedback Loop and Regeneration
+
+**Goal:** Turn human rejection into actionable regeneration instead of a terminal dead-end.
+
+- Extend the HITL decision model so rejection feedback is preserved as structured regeneration context, not only as an end-state comment.
+- When requirements are rejected, Agent 1 must read the human feedback from the run context and regenerate requirements accordingly.
+- When test cases are rejected, Agent 2 must read the human feedback from the run context and regenerate test cases accordingly.
+- When automation is rejected, Agent 3 must read the human feedback from the run context and regenerate Playwright specs accordingly.
+- Update the orchestration flow so a rejection can loop back to the owning agent stage instead of ending the run immediately.
+- Persist regeneration history clearly enough for the UI to show what feedback was given and what was regenerated in response.
+
+**Checkpoint:** An end-to-end test proves that a rejected stage with reviewer comments re-enters the owning agent node, produces a replacement artifact set, and returns to the same HITL gate for re-review.
+
+### Enhancement 5 – Validation, Tests, and Controlled Rollout
+
+**Goal:** Land the enhancement wave safely and keep the workflow supportable.
+
+- Add targeted frontend tests for navbar scroll behavior, clickable navigation actions, and collapsible stage panes.
+- Add orchestrator/API tests for rejection-driven regeneration across requirements, test cases, and automation phases.
+- Verify that trends/dashboard routes remain reachable after the shell changes.
+- Update README or operator notes if the rejection/regeneration lifecycle changes the expected reviewer workflow.
+
+**Checkpoint:** Focused test suite passes for the touched UI and orchestration slices before moving to the next enhancement phase.
+
+---
+
+## Proposed Approval Sequence For This Enhancement Wave
+
+1. Approve Enhancement 1 to fix shell usability and branding first.
+2. Approve Enhancement 2 to add collapsible stage panes after the shell is stable.
+3. Approve Enhancement 3 to improve trend dashboard visibility and history clarity.
+4. Approve Enhancement 4 to implement rejection-driven regeneration in the orchestrator and UI.
+5. Approve Enhancement 5 for final hardening and regression coverage.
+- Ensure automation scripts execute after approval and that execution results remain clearly visible in the UI once available.
+- Add a footer with the copyright text: `2026 Aroun AI labs`.
+
+### Recommended Implementation Order
+
+- Update the application shell first: guided sidebar, footer, theme toggle, and Settings entry point.
+- Move provider configuration into Settings and wire New Run to consume the saved selections.
+- Improve requirements/test case review screens to make authored and generated artifacts easier to inspect before download.
+- Add rate-limit dialog handling around run creation and HITL resume flows.
+- Refine post-approval automation and execution-result presentation.
+
+---
+
 ## Explicitly Out of Scope (see `enhancements.md`)
 
 Dockerized workers, async job queues, multi-project/multi-tenant, auth/RBAC, advanced RAG/embeddings retrieval, additional LLM providers, JEV gating beyond input stage, observability stack, audit logs, retention policies.

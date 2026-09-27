@@ -2,8 +2,9 @@ import ts from 'typescript';
 import { getLlmAdapter } from '@qa-agent/providers';
 import { automationDocumentSchema, testCasesDocumentSchema, type AutomationDocument } from '@qa-agent/shared';
 import { extractJson } from '../llmJson.js';
+import { appendRevisionSuffix, buildRegenerationPrompt, nextRevision } from '../regeneration.js';
 import type { OrchestratorStateType, OrchestratorStateUpdate } from '../state.js';
-import { readRunArtifact, writeRunArtifact } from '../workspace.js';
+import { readRunArtifactByPath, writeRunArtifact } from '../workspace.js';
 
 const SYSTEM_PROMPT = `You are a QA automation engineer. Given a list of approved, executable test cases, generate \
 Playwright (TypeScript) test files that automate them.
@@ -30,6 +31,20 @@ Rules:
 
 const AUTOMATION_BATCH_SIZE = 2;
 
+function uniquifySpecFilename(filename: string, seenFilenames: Set<string>): string {
+  if (!seenFilenames.has(filename)) return filename;
+
+  const specSuffix = '.spec.ts';
+  const baseName = filename.endsWith(specSuffix) ? filename.slice(0, -specSuffix.length) : filename;
+  let sequence = 2;
+  let candidate = `${baseName}-${sequence}${specSuffix}`;
+  while (seenFilenames.has(candidate)) {
+    sequence += 1;
+    candidate = `${baseName}-${sequence}${specSuffix}`;
+  }
+  return candidate;
+}
+
 /** Parses `code` as a TypeScript source file and throws if it contains syntax errors. */
 function assertValidTypeScript(filename: string, code: string): void {
   const sourceFile = ts.createSourceFile(filename, code, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
@@ -47,11 +62,21 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
   }
 
   const testCasesDoc = testCasesDocumentSchema.parse(
-    JSON.parse(readRunArtifact(state.runId, 'testcases', 'testcases.json')),
+    JSON.parse(readRunArtifactByPath(state.testCases.testCasesJsonPath)),
   );
   if (testCasesDoc.testCases.length === 0) {
     throw new Error('agent3Automation: test cases document has no test cases to automate');
   }
+
+  const revision = nextRevision(state.automation.revision);
+  const latestFeedback = state.automation.hitlStatus === 'rejected'
+    ? state.automation.regenerationHistory?.at(-1)
+    : undefined;
+  const priorAutomation = latestFeedback
+    ? state.automation.generatedTestFiles
+        .map((filePath) => `# ${filePath.split('/').pop() ?? filePath}\n${readRunArtifactByPath(filePath)}`)
+        .join('\n\n')
+    : undefined;
 
   const adapter = getLlmAdapter({
     llmProvider: state.config.llmProvider,
@@ -70,7 +95,15 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
         { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `runId: ${state.runId}\nbatch: ${batchIndex + 1} of ${batches.length}\n\nApproved test cases:\n${JSON.stringify(testCases, null, 2)}`,
+          content: [
+            `runId: ${state.runId}`,
+            `batch: ${batchIndex + 1} of ${batches.length}`,
+            '',
+            `Approved test cases:\n${JSON.stringify(testCases, null, 2)}`,
+            buildRegenerationPrompt('Automation', latestFeedback, priorAutomation),
+          ]
+            .filter((value): value is string => Boolean(value))
+            .join('\n\n'),
         },
       ],
       { temperature: 0.2, maxTokens: 8_192, jsonMode: true },
@@ -128,14 +161,13 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
 
   const seenFilenames = new Set<string>();
   const coveredTestCaseIds = new Set<string>();
-  for (const file of doc.files) {
-    if (seenFilenames.has(file.filename)) {
-      throw new Error(`agent3Automation: duplicate generated filename "${file.filename}"`);
-    }
-    seenFilenames.add(file.filename);
-    assertValidTypeScript(file.filename, file.code);
+  const normalizedFiles = doc.files.map((file) => {
+    const filename = uniquifySpecFilename(file.filename, seenFilenames);
+    seenFilenames.add(filename);
+    assertValidTypeScript(filename, file.code);
     for (const testCaseId of file.testCaseIds) coveredTestCaseIds.add(testCaseId);
-  }
+    return { ...file, filename };
+  });
 
   const testCaseIds = new Set(testCasesDoc.testCases.map((tc) => tc.testCaseId));
   for (const testCaseId of coveredTestCaseIds) {
@@ -149,22 +181,50 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
     }
   }
 
-  const generatedTestFiles = doc.files.map((file) =>
-    writeRunArtifact(state.runId, 'tests', file.filename, file.code),
+  const normalizedDoc: AutomationDocument = { ...doc, files: normalizedFiles };
+
+  const generatedTestFiles = normalizedDoc.files.map((file) =>
+    writeRunArtifact(state.runId, 'tests', appendRevisionSuffix(file.filename, revision), file.code),
   );
-  writeRunArtifact(state.runId, 'tests', 'automation_manifest.json', JSON.stringify(doc, null, 2));
+  writeRunArtifact(
+    state.runId,
+    'tests',
+    appendRevisionSuffix('automation_manifest.json', revision),
+    JSON.stringify(
+      {
+        ...normalizedDoc,
+        files: normalizedDoc.files.map((file, index) => ({
+          ...file,
+          filename: appendRevisionSuffix(file.filename, revision),
+          path: generatedTestFiles[index],
+        })),
+      },
+      null,
+      2,
+    ),
+  );
 
   if (state.config.enableHITLAutomation) {
     return {
       status: 'waiting_hitl',
       currentPhase: 'hitl_automation',
-      automation: { generatedTestFiles, hitlStatus: 'pending' },
+      automation: {
+        generatedTestFiles,
+        hitlStatus: 'pending',
+        hitlComments: undefined,
+        revision,
+        regenerationHistory: state.automation.regenerationHistory ?? [],
+      },
     };
   }
 
   return {
     status: 'running',
     currentPhase: 'execute_tests',
-    automation: { generatedTestFiles },
+    automation: {
+      generatedTestFiles,
+      revision,
+      regenerationHistory: state.automation.regenerationHistory ?? [],
+    },
   };
 }

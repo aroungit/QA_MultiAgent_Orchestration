@@ -20,10 +20,18 @@ export type Phase =
 
 export type LlmProvider = 'groq' | 'cohere' | 'openrouter';
 export type EmbeddingsProvider = 'voyage' | 'jina' | 'mistral';
+export type ExecutionBackend = 'local' | 'docker';
+export type ProjectRole = 'owner' | 'editor' | 'viewer';
 
 export type HitlPhase = 'hitl_requirements' | 'hitl_testcases' | 'hitl_automation';
 
 export type HitlStatus = 'pending' | 'approved' | 'rejected';
+
+export interface RegenerationHistoryEntry {
+  iteration: number;
+  comments: string;
+  artifactPaths: string[];
+}
 
 export interface RunFileRef {
   name: string;
@@ -37,6 +45,24 @@ export interface RunConfig {
   embeddingsProvider: EmbeddingsProvider;
   embeddingsModel: string;
   enableHITLAutomation: boolean;
+  executionBackend?: ExecutionBackend;
+}
+
+export interface TenantUser {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  ownerUserId: string;
+  defaultConfig: RunConfig;
+  membershipRole: ProjectRole;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JeveDecision {
@@ -57,6 +83,8 @@ export interface RequirementsState {
   requirementsJsonPath?: string;
   hitlStatus?: HitlStatus;
   hitlComments?: string;
+  revision?: number;
+  regenerationHistory?: RegenerationHistoryEntry[];
 }
 
 export interface TestCasesState {
@@ -64,12 +92,16 @@ export interface TestCasesState {
   testCasesJsonPath?: string;
   hitlStatus?: HitlStatus;
   hitlComments?: string;
+  revision?: number;
+  regenerationHistory?: RegenerationHistoryEntry[];
 }
 
 export interface AutomationState {
   generatedTestFiles: string[];
   hitlStatus?: HitlStatus;
   hitlComments?: string;
+  revision?: number;
+  regenerationHistory?: RegenerationHistoryEntry[];
 }
 
 export interface ExecutionSummary {

@@ -1,41 +1,44 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { EmbeddingsProvider, LlmProvider } from '@qa-agent/shared';
 import {
   Alert,
+  Anchor,
   Button,
-  Fieldset,
   FileInput,
   Group,
-  Select,
   Stack,
   Switch,
   Text,
   Textarea,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { ApiError, createRun } from '../../../lib/apiClient';
+import { useAppSettings } from '../../../components/AppSettingsProvider';
+import { ProviderRateLimitDialog, type ProviderOverride } from '../../../components/ProviderRateLimitDialog';
 
 const ACCEPTED_FILE_TYPES = '.md,.txt,.json,.yaml,.pdf,.docx';
 
 export default function NewRunPage() {
   const router = useRouter();
+  const { settings, hydrated } = useAppSettings();
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [llmProvider, setLlmProvider] = useState<LlmProvider>('groq');
-  const [llmModel, setLlmModel] = useState('');
-  const [embeddingsProvider, setEmbeddingsProvider] = useState<EmbeddingsProvider>('voyage');
-  const [embeddingsModel, setEmbeddingsModel] = useState('');
   const [enableHITLAutomation, setEnableHITLAutomation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
+  const [rateLimitDialogOpen, setRateLimitDialogOpen] = useState(false);
+  const [rateLimitMessage, setRateLimitMessage] = useState('');
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  useEffect(() => {
+    if (!hydrated) return;
+    setEnableHITLAutomation(settings.enableHITLAutomationByDefault);
+  }, [hydrated, settings.enableHITLAutomationByDefault]);
+
+  async function submitRun(override?: ProviderOverride) {
     setSubmitting(true);
     setError(undefined);
     setFieldErrors([]);
@@ -44,10 +47,10 @@ export default function NewRunPage() {
       const detail = await createRun({
         rawText,
         config: {
-          llmProvider,
-          llmModel: llmModel || undefined,
-          embeddingsProvider,
-          embeddingsModel: embeddingsModel || undefined,
+          llmProvider: override?.llmProvider ?? settings.llmProvider,
+          llmModel: override?.llmModel ?? (settings.llmModel || undefined),
+          embeddingsProvider: settings.embeddingsProvider,
+          embeddingsModel: settings.embeddingsModel || undefined,
           enableHITLAutomation,
         },
         files,
@@ -64,9 +67,15 @@ export default function NewRunPage() {
         return;
       }
 
+      setRateLimitDialogOpen(false);
       router.push(`/runs/${detail.runId}`);
     } catch (err) {
       if (err instanceof ApiError) {
+        if (err.status === 429) {
+          setRateLimitMessage('The selected LLM provider is currently rate-limited. Switch provider or model and retry.');
+          setRateLimitDialogOpen(true);
+          return;
+        }
         setError(err.status === 400 ? 'Invalid request. Please review the details below.' : err.message);
         const fieldErrs = extractFieldErrors(err.details);
         if (fieldErrs.length > 0) setFieldErrors(fieldErrs);
@@ -78,9 +87,35 @@ export default function NewRunPage() {
     }
   }
 
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    await submitRun();
+  }
+
   return (
     <Stack maw={720}>
-      <Title order={2}>New Run</Title>
+      <div>
+        <Title order={2}>Start Guided Flow</Title>
+        <Text c="dimmed" mt="xs">
+          Submit source requirements here. Provider choices now come from your saved settings.
+        </Text>
+      </div>
+
+      <Alert color="blue" title="Active provider settings">
+        <Stack gap={4}>
+          <Text size="sm">
+            LLM: {settings.llmProvider}
+            {settings.llmModel ? ` / ${settings.llmModel}` : ' / provider default'}
+          </Text>
+          <Text size="sm">
+            Embeddings: {settings.embeddingsProvider}
+            {settings.embeddingsModel ? ` / ${settings.embeddingsModel}` : ' / provider default'}
+          </Text>
+          <Anchor component={Link} href="/settings" size="sm">
+            Change provider defaults in Settings
+          </Anchor>
+        </Stack>
+      </Alert>
 
       {error && (
         <Alert color="red" title="Could not create run">
@@ -117,50 +152,6 @@ export default function NewRunPage() {
             clearable
           />
 
-          <Fieldset legend="LLM provider">
-            <Group grow>
-              <Select
-                label="Provider"
-                data={[
-                  { value: 'groq', label: 'Groq' },
-                  { value: 'cohere', label: 'Cohere' },
-                  { value: 'openrouter', label: 'OpenRouter' },
-                ]}
-                value={llmProvider}
-                onChange={(value) => setLlmProvider((value as LlmProvider) ?? 'groq')}
-                allowDeselect={false}
-              />
-              <TextInput
-                label="Model"
-                placeholder="Provider default"
-                value={llmModel}
-                onChange={(e) => setLlmModel(e.currentTarget.value)}
-              />
-            </Group>
-          </Fieldset>
-
-          <Fieldset legend="Embeddings provider">
-            <Group grow>
-              <Select
-                label="Provider"
-                data={[
-                  { value: 'voyage', label: 'Voyage' },
-                  { value: 'jina', label: 'Jina' },
-                  { value: 'mistral', label: 'Mistral' },
-                ]}
-                value={embeddingsProvider}
-                onChange={(value) => setEmbeddingsProvider((value as EmbeddingsProvider) ?? 'voyage')}
-                allowDeselect={false}
-              />
-              <TextInput
-                label="Model"
-                placeholder="Provider default"
-                value={embeddingsModel}
-                onChange={(e) => setEmbeddingsModel(e.currentTarget.value)}
-              />
-            </Group>
-          </Fieldset>
-
           <Switch
             label="Require human approval before automation runs"
             description="When enabled, generated Playwright tests must be approved before execution."
@@ -169,12 +160,21 @@ export default function NewRunPage() {
           />
 
           <Group justify="flex-end">
-            <Button type="submit" loading={submitting} disabled={!rawText.trim()}>
-              Create Run
+            <Button type="submit" loading={submitting} disabled={!rawText.trim() || !hydrated}>
+              Submit Requirements
             </Button>
           </Group>
         </Stack>
       </form>
+
+      <ProviderRateLimitDialog
+        opened={rateLimitDialogOpen}
+        currentProvider={settings.llmProvider}
+        message={rateLimitMessage}
+        busy={submitting}
+        onClose={() => setRateLimitDialogOpen(false)}
+        onConfirm={(override) => submitRun(override)}
+      />
     </Stack>
   );
 }

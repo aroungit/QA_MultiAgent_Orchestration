@@ -25,6 +25,7 @@ const ChartYAxis = YAxis as unknown as ComponentType<ChartProps>;
 
 export function TrendChart({ trends }: { trends: TrendPoint[] }) {
   const data = trends.map((point) => ({
+    executionLabel: point.executionLabel,
     createdAt: formatDate(point.createdAt),
     Passed: point.summary.passed,
     Failed: point.summary.failed,
@@ -35,7 +36,7 @@ export function TrendChart({ trends }: { trends: TrendPoint[] }) {
       <ChartResponsiveContainer width="100%" height="100%">
         <ChartLineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <ChartCartesianGrid strokeDasharray="3 3" />
-          <ChartXAxis dataKey="createdAt" />
+          <ChartXAxis dataKey="executionLabel" />
           <ChartYAxis allowDecimals={false} />
           <ChartTooltip />
           <ChartLegend />

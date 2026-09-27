@@ -1,5 +1,6 @@
 import { interrupt } from '@langchain/langgraph';
 import type { OrchestratorStateType, OrchestratorStateUpdate } from '../state.js';
+import { recordRegenerationFeedback } from '../regeneration.js';
 import type { HitlInterruptPayload, HitlResumeValue } from './hitlTypes.js';
 
 /** Pauses the graph for requirements review; resumes with the caller's approve/reject decision. */
@@ -13,8 +14,23 @@ export async function hitlRequirements(state: OrchestratorStateType): Promise<Or
     },
   });
 
+  const regenerationHistory =
+    resume.decision === 'rejected'
+      ? recordRegenerationFeedback(
+          state.requirements.revision,
+          resume.comments,
+          [state.requirements.requirementsJsonPath, state.requirements.summaryMarkdownPath],
+          state.requirements.regenerationHistory,
+        )
+      : state.requirements.regenerationHistory;
+
   return {
-    status: resume.decision === 'approved' ? 'running' : 'rejected',
-    requirements: { ...state.requirements, hitlStatus: resume.decision, hitlComments: resume.comments },
+    status: 'running',
+    requirements: {
+      ...state.requirements,
+      hitlStatus: resume.decision,
+      hitlComments: resume.comments,
+      regenerationHistory,
+    },
   };
 }

@@ -1,8 +1,9 @@
 import { getLlmAdapter } from '@qa-agent/providers';
 import { requirementsDocumentSchema, type RequirementsDocument } from '@qa-agent/shared';
 import { extractJson } from '../llmJson.js';
+import { appendRevisionSuffix, buildRegenerationPrompt, nextRevision } from '../regeneration.js';
 import type { OrchestratorStateType, OrchestratorStateUpdate } from '../state.js';
-import { writeRunArtifact } from '../workspace.js';
+import { readRunArtifactByPath, writeRunArtifact } from '../workspace.js';
 
 const SYSTEM_PROMPT = `You are a QA requirements analyst. Given raw, unstructured requirements text, extract a \
 normalized, traceable list of requirements.
@@ -53,6 +54,14 @@ export async function agent1Requirements(state: OrchestratorStateType): Promise<
     throw new Error('agent1Requirements: run has no raw text input to extract requirements from');
   }
 
+  const revision = nextRevision(state.requirements.revision);
+  const latestFeedback = state.requirements.hitlStatus === 'rejected'
+    ? state.requirements.regenerationHistory?.at(-1)
+    : undefined;
+  const priorRequirements = latestFeedback && state.requirements.requirementsJsonPath
+    ? readRunArtifactByPath(state.requirements.requirementsJsonPath)
+    : undefined;
+
   const adapter = getLlmAdapter({
     llmProvider: state.config.llmProvider,
     llmModel: state.config.llmModel,
@@ -61,7 +70,17 @@ export async function agent1Requirements(state: OrchestratorStateType): Promise<
   const chat = await adapter.chat(
     [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `runId: ${state.runId}\n\nRaw requirements input:\n${rawText}` },
+      {
+        role: 'user',
+        content: [
+          `runId: ${state.runId}`,
+          '',
+          `Raw requirements input:\n${rawText}`,
+          buildRegenerationPrompt('Requirements', latestFeedback, priorRequirements),
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join('\n\n'),
+      },
     ],
     { temperature: 0.2 },
   );
@@ -74,13 +93,13 @@ export async function agent1Requirements(state: OrchestratorStateType): Promise<
   const requirementsJsonPath = writeRunArtifact(
     state.runId,
     'requirements',
-    'requirements.json',
+    appendRevisionSuffix('requirements.json', revision),
     JSON.stringify(doc, null, 2),
   );
   const summaryMarkdownPath = writeRunArtifact(
     state.runId,
     'requirements',
-    'summary.md',
+    appendRevisionSuffix('summary.md', revision),
     renderSummaryMarkdown(doc),
   );
 
@@ -91,6 +110,9 @@ export async function agent1Requirements(state: OrchestratorStateType): Promise<
       requirementsJsonPath,
       summaryMarkdownPath,
       hitlStatus: 'pending',
+      hitlComments: undefined,
+      revision,
+      regenerationHistory: state.requirements.regenerationHistory ?? [],
     },
   };
 }

@@ -48,29 +48,41 @@ export interface RunDetail {
 function resolveRunConfig(partial?: Partial<RunConfig>): RunConfig {
   return runConfigSchema.parse({
     llmProvider: partial?.llmProvider ?? process.env.DEFAULT_LLM_PROVIDER ?? 'groq',
-    llmModel: partial?.llmModel ?? process.env.DEFAULT_LLM_MODEL ?? 'llama-3.1-70b-versatile',
+    llmModel: partial?.llmModel ?? process.env.DEFAULT_LLM_MODEL ?? 'openai/gpt-oss-120b',
     embeddingsProvider: partial?.embeddingsProvider ?? process.env.DEFAULT_EMBEDDINGS_PROVIDER ?? 'voyage',
     embeddingsModel: partial?.embeddingsModel ?? process.env.DEFAULT_EMBEDDINGS_MODEL ?? 'voyage-3',
     enableHITLAutomation: partial?.enableHITLAutomation ?? process.env.ENABLE_HITL_AUTOMATION === 'true',
+    executionBackend: partial?.executionBackend ?? process.env.DEFAULT_EXECUTION_BACKEND ?? 'local',
   });
+}
+
+function getRegisteredArtifactName(type: string, artifactPath: string): string {
+  if (type === 'report_html') {
+    return 'html';
+  }
+
+  if (type === 'report_allure') {
+    return 'allure';
+  }
+
+  return path.basename(artifactPath);
 }
 
 /** Persists any new artifact paths surfaced by the graph state into `run_files` (dedup by path). */
 function registerArtifactFiles(db: Database.Database, runId: string, state: OrchestratorStateType): void {
   const existingPaths = new Set(repo.listRunFiles(db, runId).map((f) => f.path));
 
-  const candidates: { path?: string; name: string; type: string; phase: RunState['currentPhase'] }[] = [
-    { path: state.requirements.requirementsJsonPath, name: 'requirements.json', type: 'requirements_json', phase: 'agent1_requirements' },
-    { path: state.requirements.summaryMarkdownPath, name: 'summary.md', type: 'requirements_summary', phase: 'agent1_requirements' },
-    { path: state.testCases.testCasesJsonPath, name: 'testcases.json', type: 'testcases_json', phase: 'agent2_testcases' },
-    { path: state.testCases.summaryMarkdownPath, name: 'testcases_summary.md', type: 'testcases_summary', phase: 'agent2_testcases' },
-    { path: state.execution.reportHtmlPath, name: 'report.html', type: 'report_html', phase: 'execute_tests' },
-    { path: state.execution.reportJsonPath, name: 'report.json', type: 'report_json', phase: 'execute_tests' },
-    { path: state.execution.reportJunitPath, name: 'report.junit.xml', type: 'report_junit', phase: 'execute_tests' },
-    { path: state.execution.reportAllurePath, name: 'allure', type: 'report_allure', phase: 'execute_tests' },
+  const candidates: { path?: string; type: string; phase: RunState['currentPhase'] }[] = [
+    { path: state.requirements.requirementsJsonPath, type: 'requirements_json', phase: 'agent1_requirements' },
+    { path: state.requirements.summaryMarkdownPath, type: 'requirements_summary', phase: 'agent1_requirements' },
+    { path: state.testCases.testCasesJsonPath, type: 'testcases_json', phase: 'agent2_testcases' },
+    { path: state.testCases.summaryMarkdownPath, type: 'testcases_summary', phase: 'agent2_testcases' },
+    { path: state.execution.reportHtmlPath, type: 'report_html', phase: 'execute_tests' },
+    { path: state.execution.reportJsonPath, type: 'report_json', phase: 'execute_tests' },
+    { path: state.execution.reportJunitPath, type: 'report_junit', phase: 'execute_tests' },
+    { path: state.execution.reportAllurePath, type: 'report_allure', phase: 'execute_tests' },
     ...state.automation.generatedTestFiles.map((filePath) => ({
       path: filePath,
-      name: path.basename(filePath),
       type: 'test_file',
       phase: 'agent3_automation' as const,
     })),
@@ -78,13 +90,19 @@ function registerArtifactFiles(db: Database.Database, runId: string, state: Orch
 
   for (const candidate of candidates) {
     if (!candidate.path || existingPaths.has(candidate.path)) continue;
-    repo.addRunFile(db, runId, { name: candidate.name, path: candidate.path, type: candidate.type, phase: candidate.phase });
+    repo.addRunFile(db, runId, {
+      name: getRegisteredArtifactName(candidate.type, candidate.path),
+      path: candidate.path,
+      type: candidate.type,
+      phase: candidate.phase,
+    });
     existingPaths.add(candidate.path);
   }
 }
 
 /** Mirrors the graph's latest state onto the DB (lifecycle metadata, JEV result, execution summary, files). */
 async function syncStateToDb(db: Database.Database, runId: string, state: OrchestratorStateType): Promise<void> {
+  repo.updateRunConfig(db, runId, state.config);
   repo.updateRunStatus(db, runId, { status: state.status, currentPhase: state.currentPhase });
 
   if (state.jeve.decisions && !repo.getLatestJeveResult(db, runId)) {
@@ -124,6 +142,7 @@ export async function createRun(db: Database.Database, params: CreateRunParams):
     await syncStateToDb(db, run.id, result);
   } catch (err) {
     repo.updateRunStatus(db, run.id, { status: 'failed' });
+    if (err instanceof ProviderRateLimitError) throw new RunRateLimitError(err.retryAfterSeconds);
     throw err;
   }
 
@@ -159,6 +178,7 @@ export async function resumeRun(
   phase: HitlPhase,
   decision: 'approved' | 'rejected',
   comments?: string,
+  configOverride?: Partial<RunConfig>,
 ): Promise<RunDetail> {
   const run = repo.getRun(db, runId);
   if (!run) throw new RunNotFoundError(`Run not found: ${runId}`);
@@ -167,9 +187,14 @@ export async function resumeRun(
   }
 
   const graph = getOrchestratorGraph();
+  const nextConfig = configOverride ? resolveRunConfig({ ...run.config, ...configOverride }) : run.config;
   try {
+    if (configOverride) {
+      repo.updateRunConfig(db, runId, nextConfig);
+    }
+
     const result = (await graph.invoke(
-      new Command({ resume: { decision, comments } }),
+      new Command({ resume: { decision, comments }, update: { config: nextConfig } }),
       threadConfig(runId),
     )) as OrchestratorStateType;
     repo.recordHitlDecision(db, runId, { phase, decision, comments });
@@ -218,6 +243,10 @@ const TYPE_SUBDIR: Record<string, string> = {
 /** Resolves the real absolute path for a `run_files` row via the `runId/subdir/name` convention
  *  (never by parsing the stored `path` string, which is a display path that ignores `WORKSPACE_ROOT`). */
 function resolveArtifactAbsPath(runId: string, file: RunFileRecord): string {
+  if (file.type === 'report_html' && file.name === 'report.html') {
+    return path.join(runWorkspacePath(runId), 'execution', 'html');
+  }
+
   const subdir = TYPE_SUBDIR[file.type] ?? file.type;
   return path.join(runWorkspacePath(runId), subdir, file.name);
 }
@@ -271,7 +300,10 @@ export async function getArtifact(
   };
 }
 
-export async function getExecutionSummary(db: Database.Database, runId: string): Promise<ExecutionSummary | undefined> {
+export async function getExecutionSummary(
+  db: Database.Database,
+  runId: string,
+): Promise<ExecutionSummary | undefined> {
   const run = repo.getRun(db, runId);
   if (!run) return undefined;
   if (run.executionSummary) return run.executionSummary;
@@ -281,14 +313,21 @@ export async function getExecutionSummary(db: Database.Database, runId: string):
 
 export interface TrendPoint {
   runId: string;
+  executionLabel: string;
   createdAt: string;
   summary: ExecutionSummary;
 }
 
 export function getTrends(db: Database.Database): TrendPoint[] {
-  return repo
+  const completedRuns = repo
     .listRuns(db)
     .filter((run) => run.executionSummary)
-    .map((run) => ({ runId: run.id, createdAt: run.createdAt, summary: run.executionSummary as ExecutionSummary }))
     .reverse();
+
+  return completedRuns.map((run, index) => ({
+    runId: run.id,
+    executionLabel: `Execution ${index + 1}`,
+    createdAt: run.createdAt,
+    summary: run.executionSummary as ExecutionSummary,
+  }));
 }

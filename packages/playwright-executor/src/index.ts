@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, type ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { ExecutionSummary } from '@qa-agent/shared';
+import type { ExecutionBackend, ExecutionSummary } from '@qa-agent/shared';
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_DOCKER_IMAGE = 'mcr.microsoft.com/playwright:v1.46.1-jammy';
+const DEFAULT_DOCKER_SHM_SIZE = '1g';
 
 export interface RunPlaywrightTestsParams {
   runId: string;
@@ -16,6 +18,10 @@ export interface RunPlaywrightTestsParams {
   cwd: string;
   /** Base URL injected into generated tests' navigation, if the app under test needs one. */
   baseUrl?: string;
+  /** Execution runtime for the Playwright CLI. */
+  executionBackend?: ExecutionBackend;
+  /** Optional override for the Playwright Docker image when `executionBackend` is `docker`. */
+  dockerImage?: string;
 }
 
 export interface RunPlaywrightTestsResult {
@@ -33,6 +39,16 @@ interface PlaywrightJsonSuite {
 
 interface PlaywrightJsonReport {
   suites?: PlaywrightJsonSuite[];
+}
+
+export interface PlaywrightExecutionPlan {
+  backend: ExecutionBackend;
+  command: string;
+  args: string[];
+  execOptions: ExecFileOptions;
+  configPath: string;
+  configTestDir: string;
+  configOutputDir: string;
 }
 
 function countResults(report: PlaywrightJsonReport): ExecutionSummary {
@@ -58,24 +74,29 @@ function countResults(report: PlaywrightJsonReport): ExecutionSummary {
   return { total, passed, failed };
 }
 
-function writePlaywrightConfig(params: RunPlaywrightTestsParams, configPath: string): void {
-  const allureResultsDir = path.join(params.outputDir, 'allure-results');
+function writePlaywrightConfig(
+  testDir: string,
+  outputDir: string,
+  baseUrl: string | undefined,
+  configPath: string,
+): void {
+  const allureResultsDir = path.join(outputDir, 'allure-results');
   const config = `import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir: ${JSON.stringify(params.testDir)},
-  outputDir: ${JSON.stringify(path.join(params.outputDir, 'artifacts'))},
+  testDir: ${JSON.stringify(testDir)},
+  outputDir: ${JSON.stringify(path.join(outputDir, 'artifacts'))},
   fullyParallel: false,
   retries: 0,
   reporter: [
     ['list'],
-    ['html', { outputFolder: ${JSON.stringify(path.join(params.outputDir, 'html'))}, open: 'never' }],
-    ['json', { outputFile: ${JSON.stringify(path.join(params.outputDir, 'report.json'))} }],
-    ['junit', { outputFile: ${JSON.stringify(path.join(params.outputDir, 'report.junit.xml'))} }],
+    ['html', { outputFolder: ${JSON.stringify(path.join(outputDir, 'html'))}, open: 'never' }],
+    ['json', { outputFile: ${JSON.stringify(path.join(outputDir, 'report.json'))} }],
+    ['junit', { outputFile: ${JSON.stringify(path.join(outputDir, 'report.junit.xml'))} }],
     ['allure-playwright', { outputFolder: ${JSON.stringify(allureResultsDir)} }],
   ],
   use: {
-    baseURL: ${JSON.stringify(params.baseUrl ?? undefined)},
+    baseURL: ${JSON.stringify(baseUrl ?? undefined)},
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
@@ -98,6 +119,69 @@ async function generateAllureReport(allureResultsDir: string, allureReportDir: s
   }
 }
 
+function toContainerPath(...segments: string[]): string {
+  return path.posix.join(...segments);
+}
+
+export function buildPlaywrightExecutionPlan(params: RunPlaywrightTestsParams): PlaywrightExecutionPlan {
+  const backend = params.executionBackend ?? 'local';
+
+  if (backend === 'docker') {
+    const repoMount = '/work';
+    const testsMount = '/generated-tests';
+    const outputMount = '/generated-output';
+    const configPath = path.join(params.cwd, '.playwright-configs', `${params.runId}.docker.config.generated.ts`);
+    const configPathInContainer = toContainerPath(repoMount, '.playwright-configs', path.basename(configPath));
+    const dockerImage = params.dockerImage ?? process.env.PLAYWRIGHT_DOCKER_IMAGE ?? DEFAULT_DOCKER_IMAGE;
+    const shmSize = process.env.PLAYWRIGHT_DOCKER_SHM_SIZE ?? DEFAULT_DOCKER_SHM_SIZE;
+
+    return {
+      backend,
+      command: 'docker',
+      args: [
+        'run',
+        '--rm',
+        '--shm-size',
+        shmSize,
+        '-e',
+        `NODE_PATH=${toContainerPath(repoMount, 'node_modules')}`,
+        '-v',
+        `${params.cwd}:${repoMount}`,
+        '-v',
+        `${params.testDir}:${testsMount}`,
+        '-v',
+        `${params.outputDir}:${outputMount}`,
+        '-w',
+        repoMount,
+        dockerImage,
+        'npx',
+        'playwright',
+        'test',
+        '--config',
+        configPathInContainer,
+      ],
+      execOptions: { shell: false },
+      configPath,
+      configTestDir: testsMount,
+      configOutputDir: outputMount,
+    };
+  }
+
+  return {
+    backend,
+    command: 'npx',
+    args: ['playwright', 'test', '--config', path.join(params.cwd, '.playwright-configs', `${params.runId}.config.generated.ts`)],
+    execOptions: {
+      cwd: params.cwd,
+      shell: true,
+      env: { ...process.env, NODE_PATH: path.join(params.cwd, 'node_modules') },
+    },
+    configPath: path.join(params.cwd, '.playwright-configs', `${params.runId}.config.generated.ts`),
+    configTestDir: params.testDir,
+    configOutputDir: params.outputDir,
+  };
+}
+
 /**
  * Runs generated Playwright specs via the CLI (`npx playwright test`), collecting HTML/JSON/JUnit/Allure
  * reports plus screenshots/videos/traces on failure, all under `outputDir`. Non-zero Playwright exit codes
@@ -105,22 +189,15 @@ async function generateAllureReport(allureResultsDir: string, allureReportDir: s
  */
 export async function runPlaywrightTests(params: RunPlaywrightTestsParams): Promise<RunPlaywrightTestsResult> {
   fs.mkdirSync(params.outputDir, { recursive: true });
-  // The generated config is written under `cwd` (repo root), not `outputDir`, so Playwright's own
-  // module resolution (relative to the config file) can find the `@playwright/test` install even
-  // when `outputDir`/`testDir` live outside the repo tree (e.g. a custom `WORKSPACE_ROOT`).
-  const configDir = path.join(params.cwd, '.playwright-configs');
+  const plan = buildPlaywrightExecutionPlan(params);
+  // The generated config stays under `cwd` even for Docker runs so the mounted repo's own
+  // `node_modules` remain the single dependency source for the config import.
+  const configDir = path.dirname(plan.configPath);
   fs.mkdirSync(configDir, { recursive: true });
-  const configPath = path.join(configDir, `${params.runId}.config.generated.ts`);
-  writePlaywrightConfig(params, configPath);
+  writePlaywrightConfig(plan.configTestDir, plan.configOutputDir, params.baseUrl, plan.configPath);
 
   try {
-    await execFileAsync('npx', ['playwright', 'test', '--config', configPath], {
-      cwd: params.cwd,
-      shell: true,
-      // Lets generated spec files (which may live outside the repo tree, e.g. a custom
-      // WORKSPACE_ROOT) resolve `@playwright/test` via the repo's own node_modules.
-      env: { ...process.env, NODE_PATH: path.join(params.cwd, 'node_modules') },
-    });
+    await execFileAsync(plan.command, plan.args, plan.execOptions);
   } catch (err) {
     // playwright test exits non-zero when tests fail; that's fine as long as the JSON report was produced.
     const reportPath = path.join(params.outputDir, 'report.json');
@@ -128,7 +205,7 @@ export async function runPlaywrightTests(params: RunPlaywrightTestsParams): Prom
       throw err instanceof Error ? err : new Error(String(err));
     }
   } finally {
-    fs.rmSync(configPath, { force: true });
+    fs.rmSync(plan.configPath, { force: true });
   }
 
   const reportJsonPath = path.join(params.outputDir, 'report.json');

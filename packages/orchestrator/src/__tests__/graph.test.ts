@@ -167,7 +167,7 @@ describe('orchestrator graph', () => {
     expect(final.automation.hitlStatus).toBe('approved');
   }, 30000);
 
-  it('stops with rejected status when a HITL gate is rejected', async () => {
+  it('regenerates requirements and pauses at the same gate after a rejection', async () => {
     const graph = compileOrchestratorGraph(new MemorySaver());
     const config = runConfig('run-3');
     const initialState = createInitialRunState({ runId: 'run-3', config: baseConfig, rawText: VALID_RAW_TEXT });
@@ -178,10 +178,87 @@ describe('orchestrator graph', () => {
       config,
     );
 
-    expect(afterReject.status).toBe('rejected');
-    expect(afterReject.requirements.hitlStatus).toBe('rejected');
-    expect(afterReject.requirements.hitlComments).toBe('missing detail');
-    expect((afterReject as WithInterrupt).__interrupt__ ?? []).toHaveLength(0);
+    expect(afterReject.status).toBe('waiting_hitl');
+    expect(afterReject.currentPhase).toBe('hitl_requirements');
+    expect(afterReject.requirements.hitlStatus).toBe('pending');
+    expect(afterReject.requirements.revision).toBe(2);
+    expect(afterReject.requirements.requirementsJsonPath).toContain('requirements.v2.json');
+    expect(afterReject.requirements.regenerationHistory).toEqual([
+      {
+        iteration: 1,
+        comments: 'missing detail',
+        artifactPaths: [
+          'workspace/run-3/requirements/requirements.json',
+          'workspace/run-3/requirements/summary.md',
+        ],
+      },
+    ]);
+    const interrupt = (afterReject as WithInterrupt).__interrupt__?.[0]?.value as HitlInterruptPayload;
+    expect(interrupt.phase).toBe('hitl_requirements');
+  });
+
+  it('regenerates test cases and pauses at the same gate after a rejection', async () => {
+    const graph = compileOrchestratorGraph(new MemorySaver());
+    const config = runConfig('run-5');
+    const initialState = createInitialRunState({ runId: 'run-5', config: baseConfig, rawText: VALID_RAW_TEXT });
+
+    await graph.invoke(initialState, config);
+    await graph.invoke(new Command({ resume: { decision: 'approved' } }), config);
+    const afterReject = await graph.invoke(
+      new Command({ resume: { decision: 'rejected', comments: 'add more edge coverage' } }),
+      config,
+    );
+
+    expect(afterReject.status).toBe('waiting_hitl');
+    expect(afterReject.currentPhase).toBe('hitl_testcases');
+    expect(afterReject.testCases.hitlStatus).toBe('pending');
+    expect(afterReject.testCases.revision).toBe(2);
+    expect(afterReject.testCases.testCasesJsonPath).toContain('testcases.v2.json');
+    expect(afterReject.testCases.regenerationHistory).toEqual([
+      {
+        iteration: 1,
+        comments: 'add more edge coverage',
+        artifactPaths: [
+          'workspace/run-5/testcases/testcases.json',
+          'workspace/run-5/testcases/testcases_summary.md',
+        ],
+      },
+    ]);
+    const interrupt = (afterReject as WithInterrupt).__interrupt__?.[0]?.value as HitlInterruptPayload;
+    expect(interrupt.phase).toBe('hitl_testcases');
+  });
+
+  it('regenerates automation and pauses at the same gate after a rejection', async () => {
+    const graph = compileOrchestratorGraph(new MemorySaver());
+    const config = runConfig('run-6');
+    const initialState = createInitialRunState({
+      runId: 'run-6',
+      config: { ...baseConfig, enableHITLAutomation: true },
+      rawText: VALID_RAW_TEXT,
+    });
+
+    await graph.invoke(initialState, config);
+    await graph.invoke(new Command({ resume: { decision: 'approved' } }), config);
+    await graph.invoke(new Command({ resume: { decision: 'approved' } }), config);
+    const afterReject = await graph.invoke(
+      new Command({ resume: { decision: 'rejected', comments: 'split the specs by feature' } }),
+      config,
+    );
+
+    expect(afterReject.status).toBe('waiting_hitl');
+    expect(afterReject.currentPhase).toBe('hitl_automation');
+    expect(afterReject.automation.hitlStatus).toBe('pending');
+    expect(afterReject.automation.revision).toBe(2);
+    expect(afterReject.automation.generatedTestFiles[0]).toContain('.v2.spec.ts');
+    expect(afterReject.automation.regenerationHistory).toEqual([
+      {
+        iteration: 1,
+        comments: 'split the specs by feature',
+        artifactPaths: ['workspace/run-6/tests/login.spec.ts'],
+      },
+    ]);
+    const interrupt = (afterReject as WithInterrupt).__interrupt__?.[0]?.value as HitlInterruptPayload;
+    expect(interrupt.phase).toBe('hitl_automation');
   });
 
   it('fails fast when JEV validation rejects the input', async () => {

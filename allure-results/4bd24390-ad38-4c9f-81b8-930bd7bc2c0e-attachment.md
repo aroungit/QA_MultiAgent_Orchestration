@@ -1,0 +1,47 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: leadManagement.spec.ts >> Lead Management >> TC-007: Lead Creation Success
+- Location: workspace\a08e66e2-5bd1-447e-a4fc-2686e1db5ec3\tests\leadManagement.spec.ts:4:7
+
+# Error details
+
+```
+Test timeout of 30000ms exceeded.
+```
+
+```
+Error: page.click: Test timeout of 30000ms exceeded.
+Call log:
+  - waiting for locator('#create-lead')
+
+```
+
+# Test source
+
+```ts
+  1  | import { test, expect } from '@playwright/test';
+  2  | 
+  3  | test.describe('Lead Management', () => {
+  4  |   test('TC-007: Lead Creation Success', async ({ page }) => {
+  5  |     // Assuming the Create Lead button has a selector of '#create-lead'
+> 6  |     await page.click('#create-lead');
+     |                ^ Error: page.click: Test timeout of 30000ms exceeded.
+  7  |     // Wait for the success message to appear
+  8  |     await page.waitForSelector('.success-message');
+  9  |     const successMessage = await page.textContent('.success-message');
+  10 |     expect(successMessage).toContain('Lead created successfully');
+  11 |   });
+  12 | 
+  13 |   test('TC-008: Display Lead Information', async ({ page }) => {
+  14 |     // Assuming the lead information is displayed in a section with the selector '#lead-info'
+  15 |     const leadInfo = await page.textContent('#lead-info');
+  16 |     expect(leadInfo).toContain('Newly created lead information');
+  17 |   });
+  18 | });
+```

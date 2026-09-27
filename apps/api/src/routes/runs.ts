@@ -37,8 +37,16 @@ export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'invalid_request', details: parsed.error.flatten() });
     }
 
-    const detail = await runsService.createRun(db, { rawText: parsed.data.rawText, config: parsed.data.config, files });
-    return reply.status(201).send(toRunResponse(detail));
+    try {
+      const detail = await runsService.createRun(db, { rawText: parsed.data.rawText, config: parsed.data.config, files });
+      return reply.status(201).send(toRunResponse(detail));
+    } catch (err: unknown) {
+      if (err instanceof runsService.RunRateLimitError) {
+        if (err.retryAfterSeconds) reply.header('Retry-After', String(Math.ceil(err.retryAfterSeconds)));
+        return reply.status(429).send({ error: err.message });
+      }
+      throw err;
+    }
   });
 
   app.get('/runs', async () => {
@@ -66,7 +74,14 @@ export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const detail = await runsService.resumeRun(db, request.params.id, phase, parsed.data.decision, parsed.data.comments);
+      const detail = await runsService.resumeRun(
+        db,
+        request.params.id,
+        phase,
+        parsed.data.decision,
+        parsed.data.comments,
+        parsed.data.configOverride,
+      );
       return toRunResponse(detail);
     } catch (err: unknown) {
       if (err instanceof runsService.RunNotFoundError) return reply.status(404).send({ error: 'not_found' });

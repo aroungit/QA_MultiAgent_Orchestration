@@ -1,5 +1,6 @@
 import { interrupt } from '@langchain/langgraph';
 import type { OrchestratorStateType, OrchestratorStateUpdate } from '../state.js';
+import { recordRegenerationFeedback } from '../regeneration.js';
 import type { HitlInterruptPayload, HitlResumeValue } from './hitlTypes.js';
 
 /** Pauses the graph for test-case review; resumes with the caller's approve/reject decision. */
@@ -13,8 +14,23 @@ export async function hitlTestcases(state: OrchestratorStateType): Promise<Orche
     },
   });
 
+  const regenerationHistory =
+    resume.decision === 'rejected'
+      ? recordRegenerationFeedback(
+          state.testCases.revision,
+          resume.comments,
+          [state.testCases.testCasesJsonPath, state.testCases.summaryMarkdownPath],
+          state.testCases.regenerationHistory,
+        )
+      : state.testCases.regenerationHistory;
+
   return {
-    status: resume.decision === 'approved' ? 'running' : 'rejected',
-    testCases: { ...state.testCases, hitlStatus: resume.decision, hitlComments: resume.comments },
+    status: 'running',
+    testCases: {
+      ...state.testCases,
+      hitlStatus: resume.decision,
+      hitlComments: resume.comments,
+      regenerationHistory,
+    },
   };
 }

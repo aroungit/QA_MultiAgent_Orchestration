@@ -158,6 +158,74 @@ describe('agent3Automation', () => {
     expect(update.automation?.generatedTestFiles).toEqual(['workspace/run-agent3/tests/login.spec.ts']);
   });
 
+  it('renames duplicate generated filenames across batches instead of failing the run', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: Array<{ content?: string }> };
+        const prompt = body.messages?.[1]?.content ?? '';
+        const testCaseIds = prompt.includes('TC-003')
+          ? ['TC-003', 'TC-004']
+          : ['TC-001', 'TC-002'];
+
+        return {
+          ok: true,
+          json: async () => ({
+            model: 'llama-3',
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    files: [
+                      {
+                        filename: 'transferValidation.spec.ts',
+                        testCaseIds,
+                        code: VALID_SPEC_CODE,
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+        };
+      }),
+    );
+
+    const originalBatchSize = TEST_CASES_DOC.testCases.length;
+    TEST_CASES_DOC.testCases.push({
+      testCaseId: 'TC-003',
+      title: 'Transfer confirmation reference is shown',
+      preconditions: ['User completed a valid transfer'],
+      steps: ['Submit valid transfer', 'Confirm transfer'],
+      expectedResults: ['Reference number is displayed'],
+      traceability: ['REQ-003'],
+      priority: 'medium',
+      tags: ['transfer'],
+    });
+    TEST_CASES_DOC.testCases.push({
+      testCaseId: 'TC-004',
+      title: 'Transfer appears in recent activity',
+      preconditions: ['User completed a valid transfer'],
+      steps: ['Open recent activity'],
+      expectedResults: ['Transfer is listed'],
+      traceability: ['REQ-004'],
+      priority: 'medium',
+      tags: ['transfer'],
+    });
+
+    try {
+      const update = await agent3Automation(buildStateWithApprovedTestCases());
+
+      expect(update.automation?.generatedTestFiles).toEqual([
+        'workspace/run-agent3/tests/transferValidation.spec.ts',
+        'workspace/run-agent3/tests/transferValidation-2.spec.ts',
+      ]);
+    } finally {
+      TEST_CASES_DOC.testCases.splice(originalBatchSize);
+    }
+  });
+
   it('throws when there is no approved testcases.json to consume', async () => {
     const state = createInitialRunState({ runId: 'run-no-tcs', config: baseConfig, rawText: 'irrelevant' });
     await expect(agent3Automation(state)).rejects.toThrow(/no approved testcases\.json/);

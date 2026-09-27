@@ -16,15 +16,27 @@ export default async function HomePage() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Runs</Title>
-        <Button component={Link} href="/runs/new">
-          New Run
-        </Button>
+        <div>
+          <Title order={2}>Workflow Run History</Title>
+          <Text c="dimmed" mt="xs">
+            Find past QA workflows, reopen their review state, and jump to the trend dashboard without decoding internal ids.
+          </Text>
+        </div>
+        <Group>
+          <Button component={Link} href="/trends" variant="default">
+            Open Trend Dashboard
+          </Button>
+          <Button component={Link} href="/runs/new">
+            Start Flow
+          </Button>
+        </Group>
       </Group>
 
       {error && <Alert color="red">{error}</Alert>}
 
-      {!error && runs.length === 0 && <Text c="dimmed">No runs yet. Create one to get started.</Text>}
+      {!error && runs.length === 0 && (
+        <Text c="dimmed">No workflow runs yet. Start the guided flow to begin building history.</Text>
+      )}
 
       {!error && runs.length > 0 && <RunsTable runs={runs} />}
     </Stack>

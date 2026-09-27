@@ -182,6 +182,17 @@ export function updateRunStatus(
   return { ...existing, status, currentPhase, updatedAt: now };
 }
 
+export function updateRunConfig(db: Database.Database, runId: string, config: RunConfig): RunRecord {
+  const existing = getRun(db, runId);
+  if (!existing) {
+    throw new Error(`Run not found: ${runId}`);
+  }
+
+  const now = new Date().toISOString();
+  db.prepare('UPDATE runs SET config_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(config), now, runId);
+  return { ...existing, config, updatedAt: now };
+}
+
 export function getRunInput(db: Database.Database, runId: string): RunInputRecord | undefined {
   const row = db
     .prepare('SELECT * FROM run_inputs WHERE run_id = ? ORDER BY created_at DESC LIMIT 1')
@@ -210,10 +221,10 @@ export function addRunFile(db: Database.Database, runId: string, file: AddRunFil
 export function listRunFiles(db: Database.Database, runId: string, type?: string): RunFileRecord[] {
   const rows = type
     ? (db
-        .prepare('SELECT * FROM run_files WHERE run_id = ? AND type = ? ORDER BY created_at ASC')
+        .prepare('SELECT * FROM run_files WHERE run_id = ? AND type = ? ORDER BY created_at ASC, rowid ASC')
         .all(runId, type) as RunFileRow[])
     : (db
-        .prepare('SELECT * FROM run_files WHERE run_id = ? ORDER BY created_at ASC')
+        .prepare('SELECT * FROM run_files WHERE run_id = ? ORDER BY created_at ASC, rowid ASC')
         .all(runId) as RunFileRow[]);
   return rows.map(mapRunFile);
 }
@@ -248,7 +259,7 @@ export function recordHitlDecision(
 
 export function listHitlDecisions(db: Database.Database, runId: string): HitlDecisionRecord[] {
   const rows = db
-    .prepare('SELECT * FROM hitl_decisions WHERE run_id = ? ORDER BY decided_at ASC')
+    .prepare('SELECT * FROM hitl_decisions WHERE run_id = ? ORDER BY decided_at ASC, rowid ASC')
     .all(runId) as HitlDecisionRow[];
   return rows.map(mapHitlDecision);
 }

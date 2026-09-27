@@ -22,7 +22,19 @@ export function writeRunArtifact(runId: string, subdir: string, filename: string
   return path.join('workspace', runId, subdir, filename).split(path.sep).join('/');
 }
 
+export function resolveDisplayArtifactPath(displayPath: string): string {
+  const parts = displayPath.split('/').filter(Boolean);
+  if (parts[0] !== 'workspace' || parts.length < 3) {
+    throw new Error(`Invalid run artifact path: ${displayPath}`);
+  }
+  return path.join(resolveWorkspaceRoot(), ...parts.slice(1));
+}
+
 /** Reads a UTF-8 artifact previously written via `writeRunArtifact` for the same runId/subdir/filename. */
 export function readRunArtifact(runId: string, subdir: string, filename: string): string {
   return fs.readFileSync(path.join(resolveWorkspaceRoot(), runId, subdir, filename), 'utf-8');
+}
+
+export function readRunArtifactByPath(displayPath: string): string {
+  return fs.readFileSync(resolveDisplayArtifactPath(displayPath), 'utf-8');
 }

@@ -1,7 +1,9 @@
 import type {
+  AutomationState,
   AutomationDocument,
   ExecutionState,
   ExecutionSummary,
+  HitlDecisionRequest,
   HitlPhase,
   JeveResultState,
   Phase,
@@ -29,6 +31,7 @@ export interface RunSummary {
 
 export interface TrendPoint {
   runId: string;
+  executionLabel: string;
   createdAt: string;
   summary: ExecutionSummary;
 }
@@ -45,7 +48,7 @@ export interface RunDetailResponse {
   jeve?: JeveResultState;
   requirements?: RequirementsState;
   testCases?: TestCasesState;
-  automation?: { generatedTestFiles: string[]; hitlStatus?: string; hitlComments?: string };
+  automation?: AutomationState;
   execution?: ExecutionState;
   hitlDecisions: { id: string; phase: HitlPhase; decision: 'approved' | 'rejected'; comments: string | null; decidedAt: string }[];
   files: { id: string; name: string; path: string; type: string; phase: Phase | null; createdAt: string }[];
@@ -99,11 +102,12 @@ export function submitHitlDecision(
   phase: HitlPhase,
   decision: 'approved' | 'rejected',
   comments?: string,
+  configOverride?: HitlDecisionRequest['configOverride'],
 ): Promise<RunDetailResponse> {
   return apiFetch<RunDetailResponse>(`/runs/${runId}/hitl/${phase}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision, comments }),
+    body: JSON.stringify({ decision, comments, configOverride }),
   });
 }
 

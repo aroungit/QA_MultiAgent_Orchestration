@@ -1,8 +1,9 @@
 import { getLlmAdapter } from '@qa-agent/providers';
 import { requirementsDocumentSchema, testCasesDocumentSchema, type TestCasesDocument } from '@qa-agent/shared';
 import { extractJson } from '../llmJson.js';
+import { appendRevisionSuffix, buildRegenerationPrompt, nextRevision } from '../regeneration.js';
 import type { OrchestratorStateType, OrchestratorStateUpdate } from '../state.js';
-import { readRunArtifact, writeRunArtifact } from '../workspace.js';
+import { readRunArtifactByPath, writeRunArtifact } from '../workspace.js';
 
 const SYSTEM_PROMPT = `You are a QA test case designer. Given a normalized list of approved requirements, derive \
 a set of detailed, executable test cases.
@@ -58,11 +59,19 @@ export async function agent2Testcases(state: OrchestratorStateType): Promise<Orc
   }
 
   const requirementsDoc = requirementsDocumentSchema.parse(
-    JSON.parse(readRunArtifact(state.runId, 'requirements', 'requirements.json')),
+    JSON.parse(readRunArtifactByPath(state.requirements.requirementsJsonPath)),
   );
   if (requirementsDoc.requirements.length === 0) {
     throw new Error('agent2Testcases: requirements document has no requirements to derive test cases from');
   }
+
+  const revision = nextRevision(state.testCases.revision);
+  const latestFeedback = state.testCases.hitlStatus === 'rejected'
+    ? state.testCases.regenerationHistory?.at(-1)
+    : undefined;
+  const priorTestcases = latestFeedback && state.testCases.testCasesJsonPath
+    ? readRunArtifactByPath(state.testCases.testCasesJsonPath)
+    : undefined;
 
   const adapter = getLlmAdapter({
     llmProvider: state.config.llmProvider,
@@ -74,7 +83,14 @@ export async function agent2Testcases(state: OrchestratorStateType): Promise<Orc
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `runId: ${state.runId}\n\nApproved requirements:\n${JSON.stringify(requirementsDoc.requirements, null, 2)}`,
+        content: [
+          `runId: ${state.runId}`,
+          '',
+          `Approved requirements:\n${JSON.stringify(requirementsDoc.requirements, null, 2)}`,
+          buildRegenerationPrompt('Test cases', latestFeedback, priorTestcases),
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join('\n\n'),
       },
     ],
     { temperature: 0.2 },
@@ -99,13 +115,13 @@ export async function agent2Testcases(state: OrchestratorStateType): Promise<Orc
   const testCasesJsonPath = writeRunArtifact(
     state.runId,
     'testcases',
-    'testcases.json',
+    appendRevisionSuffix('testcases.json', revision),
     JSON.stringify(doc, null, 2),
   );
   const summaryMarkdownPath = writeRunArtifact(
     state.runId,
     'testcases',
-    'testcases_summary.md',
+    appendRevisionSuffix('testcases_summary.md', revision),
     renderSummaryMarkdown(doc),
   );
 
@@ -116,6 +132,9 @@ export async function agent2Testcases(state: OrchestratorStateType): Promise<Orc
       testCasesJsonPath,
       summaryMarkdownPath,
       hitlStatus: 'pending',
+      hitlComments: undefined,
+      revision,
+      regenerationHistory: state.testCases.regenerationHistory ?? [],
     },
   };
 }

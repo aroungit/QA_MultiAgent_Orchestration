@@ -37,14 +37,14 @@ export function buildOrchestratorGraph() {
     .addEdge('agent1_requirements', 'hitl_requirements')
     .addConditionalEdges(
       'hitl_requirements',
-      (state) => (state.requirements.hitlStatus === 'approved' ? 'agent2_testcases' : END),
-      ['agent2_testcases', END],
+      (state) => (state.requirements.hitlStatus === 'approved' ? 'agent2_testcases' : 'agent1_requirements'),
+      ['agent2_testcases', 'agent1_requirements'],
     )
     .addEdge('agent2_testcases', 'hitl_testcases')
     .addConditionalEdges(
       'hitl_testcases',
-      (state) => (state.testCases.hitlStatus === 'approved' ? 'agent3_automation' : END),
-      ['agent3_automation', END],
+      (state) => (state.testCases.hitlStatus === 'approved' ? 'agent3_automation' : 'agent2_testcases'),
+      ['agent3_automation', 'agent2_testcases'],
     )
     .addConditionalEdges(
       'agent3_automation',
@@ -53,8 +53,8 @@ export function buildOrchestratorGraph() {
     )
     .addConditionalEdges(
       'hitl_automation',
-      (state) => (state.automation.hitlStatus === 'approved' ? 'execute_tests' : END),
-      ['execute_tests', END],
+      (state) => (state.automation.hitlStatus === 'approved' ? 'execute_tests' : 'agent3_automation'),
+      ['execute_tests', 'agent3_automation'],
     )
     .addEdge('execute_tests', 'finalize_run')
     .addEdge('finalize_run', END);
