@@ -27,7 +27,9 @@ Rules:
 - "code" contains the full, self-contained file contents as one string; the file must be valid TypeScript importing \`{ test, expect }\` from \`"@playwright/test"\`.
 - Every test case must be covered by exactly one \`test(...)\` block in some file, and each block's title must include its testCaseId.
 - Prefer one file per logical feature/page over one giant file; group related test cases together.
-- Use realistic, traceable selectors and steps derived from the test case's steps/expectedResults; do not fabricate unrelated assertions.`;
+- Use realistic, traceable selectors and steps derived from the test case's steps/expectedResults; do not fabricate unrelated assertions.
+- When a test case includes structured example values or test data, use those literal values in the generated code before inventing placeholder usernames, passwords, names, amounts, or labels.
+- If no structured values are supplied for a field, leave a clear TODO-style placeholder rather than silently inventing business data.`;
 
 const AUTOMATION_BATCH_SIZE = 2;
 
@@ -186,7 +188,7 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
   const generatedTestFiles = normalizedDoc.files.map((file) =>
     writeRunArtifact(state.runId, 'tests', appendRevisionSuffix(file.filename, revision), file.code),
   );
-  writeRunArtifact(
+  const manifestPath = writeRunArtifact(
     state.runId,
     'tests',
     appendRevisionSuffix('automation_manifest.json', revision),
@@ -212,6 +214,7 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
         generatedTestFiles,
         hitlStatus: 'pending',
         hitlComments: undefined,
+        manifestPath,
         revision,
         regenerationHistory: state.automation.regenerationHistory ?? [],
       },
@@ -223,6 +226,7 @@ export async function agent3Automation(state: OrchestratorStateType): Promise<Or
     currentPhase: 'execute_tests',
     automation: {
       generatedTestFiles,
+      manifestPath,
       revision,
       regenerationHistory: state.automation.regenerationHistory ?? [],
     },

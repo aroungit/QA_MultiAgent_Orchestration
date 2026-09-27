@@ -316,6 +316,22 @@ These observations refine the existing frontend phases and should be implemented
 
 **Checkpoint:** Focused test suite passes for the touched UI and orchestration slices before moving to the next enhancement phase.
 
+### Enhancement 6 – Execution Report Reliability and Human Test Data Preservation
+
+**Goal:** Fix execution-report trustworthiness and ensure human-supplied example data survives into generated test cases and automation.
+
+- Fix the Playwright execution harness so generated config files remain available for the full worker lifecycle and do not cause worker-bootstrap failures or misleading all-tests-failed reports.
+- Prevent stale and regenerated `*.spec.ts` revisions in the same run workspace from being executed together unless that behavior is explicitly intended; execution should target the approved artifact set only.
+- Update execution/reporting logic so infrastructure failures are surfaced distinctly from genuine assertion failures, making HTML/JSON reports easier to interpret.
+- Extend the requirements and test case schemas to preserve human-provided example values, comments, notes, or explicit test data as structured fields instead of compressing them into free-text descriptions.
+- Update Agent 1 prompts/parsing so raw requirement comments and embedded example data are extracted into the new structured fields when present.
+- Update Agent 2 so generated test cases carry forward the preserved human test data and expose it in a reviewable/downloadable form.
+- Update Agent 3 so generated Playwright specs prefer approved structured test data over invented placeholder credentials, names, amounts, or labels.
+- Update the review UX and downloadable artifacts where needed so reviewers can confirm which human-supplied data was preserved and used during automation generation.
+- Add focused regression tests for both slices: Playwright execution/report generation under failure conditions, and schema/prompt coverage proving that human-provided comments or test data survive requirements → test cases → automation artifacts.
+
+**Checkpoint:** A targeted run proves that Playwright reports no longer fail due to missing generated config artifacts, and a sample requirement containing explicit human-supplied test data is traceably preserved in requirements, test cases, and generated Playwright code.
+
 ---
 
 ## Proposed Approval Sequence For This Enhancement Wave
@@ -325,6 +341,7 @@ These observations refine the existing frontend phases and should be implemented
 3. Approve Enhancement 3 to improve trend dashboard visibility and history clarity.
 4. Approve Enhancement 4 to implement rejection-driven regeneration in the orchestrator and UI.
 5. Approve Enhancement 5 for final hardening and regression coverage.
+6. Approve Enhancement 6 to harden Playwright execution reporting and preserve human-supplied test data through all generation stages.
 - Ensure automation scripts execute after approval and that execution results remain clearly visible in the UI once available.
 - Add a footer with the copyright text: `2026 Aroun AI labs`.
 
@@ -335,6 +352,7 @@ These observations refine the existing frontend phases and should be implemented
 - Improve requirements/test case review screens to make authored and generated artifacts easier to inspect before download.
 - Add rate-limit dialog handling around run creation and HITL resume flows.
 - Refine post-approval automation and execution-result presentation.
+- Fix execution-harness/report reliability and then extend the schemas/prompts so human-supplied test data persists through requirements, test cases, and automation generation.
 
 ---
 

@@ -17,9 +17,12 @@ export default async function TrendsPage() {
   const totalRuns = trends.length;
   const totalPassed = trends.reduce((sum, point) => sum + point.summary.passed, 0);
   const totalFailed = trends.reduce((sum, point) => sum + point.summary.failed, 0);
+  const totalInfrastructure = trends.reduce((sum, point) => sum + (point.summary.infrastructureFailures ?? 0), 0);
   const latestRun = trends.at(-1);
   const latestOutcome = latestRun
-    ? latestRun.summary.failed > 0
+    ? (latestRun.summary.infrastructureFailures ?? 0) > 0
+      ? `${latestRun.summary.infrastructureFailures} infrastructure failures in the latest run`
+      : latestRun.summary.failed > 0
       ? `${latestRun.summary.failed} failed checks in the latest run`
       : 'Latest run completed without failed checks'
     : 'No completed runs yet';
@@ -46,7 +49,17 @@ export default async function TrendsPage() {
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
             <MetricCard label="Completed runs" value={String(totalRuns)} detail="Runs available in the dashboard" />
             <MetricCard label="Passed checks" value={String(totalPassed)} detail={`${passRate}% overall pass rate`} />
-            <MetricCard label="Failed checks" value={String(totalFailed)} detail={totalFailed === 0 ? 'No recent failures recorded' : 'Failures captured across completed runs'} />
+            <MetricCard
+              label="Failed checks"
+              value={String(totalFailed)}
+              detail={
+                totalInfrastructure > 0
+                  ? `${totalInfrastructure} infrastructure issues tracked separately`
+                  : totalFailed === 0
+                    ? 'No recent failures recorded'
+                    : 'Failures captured across completed runs'
+              }
+            />
             <MetricCard
               label="Latest outcome"
               value={latestRun?.executionLabel ?? 'Waiting for first run'}
@@ -83,7 +96,12 @@ export default async function TrendsPage() {
                       </td>
                       <td style={tableCellStyle}>{point.summary.total}</td>
                       <td style={tableCellStyle}>{point.summary.passed}</td>
-                      <td style={tableCellStyle}>{point.summary.failed}</td>
+                      <td style={tableCellStyle}>
+                        {point.summary.failed}
+                        {(point.summary.infrastructureFailures ?? 0) > 0
+                          ? ` (+${point.summary.infrastructureFailures} infra)`
+                          : ''}
+                      </td>
                       <td style={tableCellStyle}>{formatDateTime(point.createdAt)}</td>
                     </tr>
                   ))}

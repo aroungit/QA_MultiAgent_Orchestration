@@ -20,7 +20,11 @@ Respond with ONLY a single JSON object (no markdown fences, no commentary) of th
       "expectedResults": string[],
       "traceability": string[],
       "priority": "low" | "medium" | "high" | "critical",
-      "tags": string[]
+      "tags": string[],
+      "comments": string[],
+      "notes": string[],
+      "exampleValues": [{ "label": string, "value": string, "notes": string (optional) }],
+      "testData": [{ "label": string, "value": string, "notes": string (optional) }]
     }
   ]
 }
@@ -30,7 +34,19 @@ Rules:
 - Every requirement should be covered by at least one test case.
 - "traceability" must only contain requirementId values from the provided requirements list; never invent new ones.
 - Prefer multiple focused test cases over one large test case when a requirement has several distinct behaviors.
-- "steps" and "expectedResults" must be concrete and executable, not vague restatements of the requirement.`;
+- "steps" and "expectedResults" must be concrete and executable, not vague restatements of the requirement.
+- Carry forward any relevant human-supplied comments, notes, example values, and explicit test data from the source requirements into the matching structured fields.
+- When example values or test data are present, use them to make the steps specific; do not replace them with generic placeholders.`;
+
+function renderPreservedValues(label: string, values: TestCasesDocument['testCases'][number]['exampleValues']): string[] {
+  if (values.length === 0) return [];
+
+  const lines = [label];
+  for (const value of values) {
+    lines.push(`- ${value.label}: ${value.value}${value.notes ? ` (${value.notes})` : ''}`);
+  }
+  return lines;
+}
 
 function renderSummaryMarkdown(doc: TestCasesDocument): string {
   const lines = ['# Test Cases Summary', '', `Run: \`${doc.runId}\``, `Total test cases: ${doc.testCases.length}`, ''];
@@ -39,10 +55,14 @@ function renderSummaryMarkdown(doc: TestCasesDocument): string {
     lines.push(`- Priority: ${tc.priority}`);
     lines.push(`- Traceability: ${tc.traceability.join(', ') || '(none)'}`);
     if (tc.tags.length) lines.push(`- Tags: ${tc.tags.join(', ')}`);
+    if (tc.comments.length) lines.push(`- Comments: ${tc.comments.join(' | ')}`);
+    if (tc.notes.length) lines.push(`- Notes: ${tc.notes.join(' | ')}`);
     if (tc.preconditions.length) {
       lines.push('', 'Preconditions:');
       for (const pre of tc.preconditions) lines.push(`- ${pre}`);
     }
+    lines.push(...renderPreservedValues('Example values:', tc.exampleValues));
+    lines.push(...renderPreservedValues('Structured test data:', tc.testData));
     lines.push('', 'Steps:');
     tc.steps.forEach((step, i) => lines.push(`${i + 1}. ${step}`));
     lines.push('', 'Expected Results:');

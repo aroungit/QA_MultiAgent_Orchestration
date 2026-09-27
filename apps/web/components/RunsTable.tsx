@@ -93,7 +93,14 @@ function formatPhaseLabel(phase: RunSummary['currentPhase']): string {
 
 function formatOutcome(run: RunSummary): string {
   if (run.executionSummary) {
-    return `${run.executionSummary.passed} passed / ${run.executionSummary.failed} failed`;
+    const parts = [`${run.executionSummary.passed} passed`, `${run.executionSummary.failed} failed`];
+    if ((run.executionSummary.infrastructureFailures ?? 0) > 0) {
+      parts.push(`${run.executionSummary.infrastructureFailures} infrastructure`);
+    }
+    if ((run.executionSummary.skipped ?? 0) > 0) {
+      parts.push(`${run.executionSummary.skipped} skipped`);
+    }
+    return parts.join(' / ');
   }
 
   if (run.status === 'rejected') return 'Stopped after reviewer rejection';

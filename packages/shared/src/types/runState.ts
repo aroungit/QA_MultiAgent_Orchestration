@@ -100,14 +100,20 @@ export interface AutomationState {
   generatedTestFiles: string[];
   hitlStatus?: HitlStatus;
   hitlComments?: string;
+  manifestPath?: string;
   revision?: number;
   regenerationHistory?: RegenerationHistoryEntry[];
 }
+
+export type ExecutionFailureMode = 'passed' | 'assertion' | 'infrastructure' | 'mixed';
 
 export interface ExecutionSummary {
   total: number;
   passed: number;
   failed: number;
+  skipped?: number;
+  infrastructureFailures?: number;
+  failureMode?: ExecutionFailureMode;
 }
 
 export interface ExecutionState {
@@ -116,6 +122,7 @@ export interface ExecutionState {
   reportJunitPath?: string;
   reportAllurePath?: string;
   summary?: ExecutionSummary;
+  infrastructureErrors?: string[];
 }
 
 export interface RunState {

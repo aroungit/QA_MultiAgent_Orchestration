@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+export const preservedValueSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  notes: z.string().optional(),
+});
+export type PreservedValue = z.infer<typeof preservedValueSchema>;
+
 export const requirementSchema = z.object({
   requirementId: z.string(),
   title: z.string(),
@@ -7,6 +14,10 @@ export const requirementSchema = z.object({
   source: z.string().optional(),
   testable: z.boolean().default(true),
   tags: z.array(z.string()).default([]),
+  comments: z.array(z.string()).default([]),
+  notes: z.array(z.string()).default([]),
+  exampleValues: z.array(preservedValueSchema).default([]),
+  testData: z.array(preservedValueSchema).default([]),
 });
 export type Requirement = z.infer<typeof requirementSchema>;
 
@@ -25,6 +36,10 @@ export const testCaseSchema = z.object({
   traceability: z.array(z.string()),
   priority: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
   tags: z.array(z.string()).default([]),
+  comments: z.array(z.string()).default([]),
+  notes: z.array(z.string()).default([]),
+  exampleValues: z.array(preservedValueSchema).default([]),
+  testData: z.array(preservedValueSchema).default([]),
 });
 export type TestCase = z.infer<typeof testCaseSchema>;
 

@@ -725,11 +725,31 @@ function ExecutionPanel({ runId, execution }: { runId: string; execution: NonNul
     <Card withBorder>
       <Stack>
         <Title order={4}>Execution Results</Title>
-        <SimpleGrid cols={3}>
+        <SimpleGrid cols={{ base: 2, sm: 3, lg: summary.infrastructureFailures || summary.skipped ? 5 : 3 }}>
           <SummaryCard label="Total" value={summary.total} color="blue" />
           <SummaryCard label="Passed" value={summary.passed} color="green" />
           <SummaryCard label="Failed" value={summary.failed} color="red" />
+          {(summary.infrastructureFailures ?? 0) > 0 && (
+            <SummaryCard label="Infrastructure" value={summary.infrastructureFailures ?? 0} color="orange" />
+          )}
+          {(summary.skipped ?? 0) > 0 && <SummaryCard label="Skipped" value={summary.skipped ?? 0} color="gray" />}
         </SimpleGrid>
+        {(summary.infrastructureFailures ?? 0) > 0 && (
+          <Alert color="orange" title={summary.failureMode === 'mixed' ? 'Mixed execution outcome' : 'Infrastructure failure detected'}>
+            <Stack gap={4}>
+              <Text size="sm">
+                {summary.failureMode === 'mixed'
+                  ? 'The run contains both genuine test failures and infrastructure failures. Review the infrastructure messages before trusting the pass/fail split.'
+                  : 'The run failed before at least one worker could execute normally. Treat the report as an execution-environment issue first.'}
+              </Text>
+              {(execution.infrastructureErrors ?? []).map((message) => (
+                <Text key={message} size="sm">
+                  • {message}
+                </Text>
+              ))}
+            </Stack>
+          </Alert>
+        )}
         <Group>
           {execution.reportHtmlPath && (
             <Anchor href={artifactUrl(runId, 'report_html')} target="_blank" rel="noreferrer">
@@ -822,6 +842,40 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
   );
 }
 
+function PreservedValuesList({
+  label,
+  values,
+}: {
+  label: string;
+  values: Array<{ label: string; value: string; notes?: string }>;
+}) {
+  if (values.length === 0) return null;
+
+  return (
+    <Stack gap={4}>
+      <Text size="sm" fw={600}>
+        {label}
+      </Text>
+      {values.map((value) => (
+        <Text key={`${label}-${value.label}-${value.value}`} size="sm" c="dimmed">
+          {value.label}: {value.value}
+          {value.notes ? ` (${value.notes})` : ''}
+        </Text>
+      ))}
+    </Stack>
+  );
+}
+
+function TextList({ label, values }: { label: string; values: string[] }) {
+  if (values.length === 0) return null;
+
+  return (
+    <Text size="sm" c="dimmed">
+      {label}: {values.join('; ')}
+    </Text>
+  );
+}
+
 function RequirementsPreview({ document }: { document: RequirementsDocument }) {
   return (
     <Stack gap="xs">
@@ -846,6 +900,10 @@ function RequirementsPreview({ document }: { document: RequirementsDocument }) {
                 </Badge>
               ))}
             </Group>
+            <TextList label="Comments" values={requirement.comments} />
+            <TextList label="Notes" values={requirement.notes} />
+            <PreservedValuesList label="Example values" values={requirement.exampleValues} />
+            <PreservedValuesList label="Structured test data" values={requirement.testData} />
           </Stack>
         </Card>
       ))}
@@ -883,6 +941,10 @@ function TestCasesPreview({ document }: { document: TestCasesDocument }) {
                 Preconditions: {testCase.preconditions.join('; ')}
               </Text>
             )}
+            <TextList label="Comments" values={testCase.comments} />
+            <TextList label="Notes" values={testCase.notes} />
+            <PreservedValuesList label="Example values" values={testCase.exampleValues} />
+            <PreservedValuesList label="Structured test data" values={testCase.testData} />
           </Stack>
         </Card>
       ))}

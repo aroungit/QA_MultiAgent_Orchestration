@@ -26,6 +26,10 @@ const REQUIREMENTS_JSON = JSON.stringify({
       description: 'The application allows a valid user to sign in.',
       testable: true,
       tags: ['auth'],
+      comments: ['Use the seeded reviewer account.'],
+      notes: ['Keep the same seeded password in all examples.'],
+      exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+      testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
     },
   ],
 });
@@ -42,6 +46,10 @@ const TESTCASES_JSON = JSON.stringify({
       traceability: ['REQ-1'],
       priority: 'high',
       tags: ['smoke'],
+      comments: ['Use the seeded reviewer account.'],
+      notes: ['Keep the same seeded password in all examples.'],
+      exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+      testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
     },
   ],
 });
@@ -143,6 +151,8 @@ describe('RunDetailView', () => {
     expect(automationButton).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText(/Regeneration history/i)).toBeInTheDocument();
     expect(screen.getByText(/Add more coverage around failed sign-in attempts\./i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Username: qa.user@example.com/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Password: P@ssw0rd!/i).length).toBeGreaterThan(0);
 
     vi.unstubAllGlobals();
   });

@@ -18,7 +18,11 @@ Respond with ONLY a single JSON object (no markdown fences, no commentary) of th
       "description": string,
       "source": string (optional),
       "testable": boolean,
-      "tags": string[]
+      "tags": string[],
+      "comments": string[],
+      "notes": string[],
+      "exampleValues": [{ "label": string, "value": string, "notes": string (optional) }],
+      "testData": [{ "label": string, "value": string, "notes": string (optional) }]
     }
   ]
 }
@@ -27,7 +31,19 @@ Rules:
 - requirementId values must be unique, formatted like "REQ-001", "REQ-002", ...
 - Split the input into atomic, individually testable requirements; do not merge unrelated behaviors.
 - "testable" is false only when the requirement is too vague to derive verifiable test steps.
-- "tags" are short lowercase keywords (e.g. "auth", "performance").`;
+- "tags" are short lowercase keywords (e.g. "auth", "performance").
+- Preserve explicit reviewer comments, notes, sample values, credentials, names, amounts, labels, and other human-supplied test data in the structured fields instead of burying them in description text.
+- Keep structured values literal. Do not redact, normalize, or invent replacements unless the source text itself does so.`;
+
+function renderPreservedValues(label: string, values: RequirementsDocument['requirements'][number]['exampleValues']): string[] {
+  if (values.length === 0) return [];
+
+  const lines = [label];
+  for (const value of values) {
+    lines.push(`- ${value.label}: ${value.value}${value.notes ? ` (${value.notes})` : ''}`);
+  }
+  return lines;
+}
 
 function renderSummaryMarkdown(doc: RequirementsDocument): string {
   const lines = [
@@ -42,6 +58,10 @@ function renderSummaryMarkdown(doc: RequirementsDocument): string {
     lines.push(`- Testable: ${req.testable ? 'yes' : 'no'}`);
     if (req.source) lines.push(`- Source: ${req.source}`);
     if (req.tags.length) lines.push(`- Tags: ${req.tags.join(', ')}`);
+    if (req.comments.length) lines.push(`- Comments: ${req.comments.join(' | ')}`);
+    if (req.notes.length) lines.push(`- Notes: ${req.notes.join(' | ')}`);
+    lines.push(...renderPreservedValues('Example values:', req.exampleValues));
+    lines.push(...renderPreservedValues('Structured test data:', req.testData));
     lines.push('');
   }
   return lines.join('\n');

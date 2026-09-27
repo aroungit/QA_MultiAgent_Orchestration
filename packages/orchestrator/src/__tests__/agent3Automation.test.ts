@@ -36,6 +36,10 @@ const TEST_CASES_DOC = {
       traceability: ['REQ-001'],
       priority: 'high',
       tags: ['auth'],
+      comments: ['Use the approved reviewer account.'],
+      notes: ['Do not rotate the seeded password during this test.'],
+      exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+      testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
     },
     {
       testCaseId: 'TC-002',
@@ -144,6 +148,67 @@ describe('agent3Automation', () => {
     expect(update.status).toBe('waiting_hitl');
     expect(update.currentPhase).toBe('hitl_automation');
     expect(update.automation?.hitlStatus).toBe('pending');
+  });
+
+  it('passes preserved structured test data into the automation prompt and stores the generated manifest path', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: Array<{ content?: string }> };
+        const prompt = body.messages?.[1]?.content ?? '';
+        expect(prompt).toContain('qa.user@example.com');
+        expect(prompt).toContain('P@ssw0rd!');
+
+        return {
+          ok: true,
+          json: async () => ({
+            model: 'llama-3',
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    files: [
+                      {
+                        filename: 'login.spec.ts',
+                        testCaseIds: ['TC-001', 'TC-002'],
+                        code: `import { test, expect } from '@playwright/test';
+
+test('TC-001: Successful login', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#username', 'qa.user@example.com');
+  await page.fill('#password', 'P@ssw0rd!');
+  await page.click('#submit');
+  await expect(page).toHaveURL('/dashboard');
+});
+
+test('TC-002: Session expires after inactivity', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#username', 'qa.user@example.com');
+  await page.fill('#password', 'P@ssw0rd!');
+  await page.click('#submit');
+  await page.waitForTimeout(1000);
+  await expect(page).toHaveURL('/login');
+});\n`,
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+        };
+      }),
+    );
+
+    const update = await agent3Automation(buildStateWithApprovedTestCases());
+
+    expect(update.automation?.manifestPath).toBe('workspace/run-agent3/tests/automation_manifest.json');
+    const writtenCode = fs.readFileSync(
+      path.join(tempWorkspaceRoot, 'run-agent3', 'tests', 'login.spec.ts'),
+      'utf-8',
+    );
+    expect(writtenCode).toContain("qa.user@example.com");
+    expect(writtenCode).toContain("P@ssw0rd!");
   });
 
   it('normalizes codeLines and singular legacy file fields from the LLM', async () => {

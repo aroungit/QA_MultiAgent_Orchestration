@@ -12,6 +12,8 @@ export interface RunPlaywrightTestsParams {
   runId: string;
   /** Absolute directory containing the generated `*.spec.ts` files. */
   testDir: string;
+  /** Absolute paths for the approved spec files to execute. When provided, only these files are staged and run. */
+  testFilePaths?: string[];
   /** Absolute directory to write reports/artifacts into (`workspace/<runId>/execution`). */
   outputDir: string;
   /** Working directory `npx playwright` is spawned from (repo root, so it resolves the installed binary). */
@@ -30,15 +32,56 @@ export interface RunPlaywrightTestsResult {
   reportJunitPath: string;
   reportAllurePath?: string;
   summary: ExecutionSummary;
+  infrastructureErrors: string[];
+}
+
+interface PlaywrightJsonError {
+  message?: string;
+  stack?: string;
+}
+
+interface PlaywrightJsonTestResult {
+  status: string;
+  workerIndex?: number;
+  parallelIndex?: number;
+  error?: PlaywrightJsonError;
+  errors?: PlaywrightJsonError[];
 }
 
 interface PlaywrightJsonSuite {
   suites?: PlaywrightJsonSuite[];
-  specs?: { tests?: { results?: { status: string }[] }[] }[];
+  specs?: { tests?: { results?: PlaywrightJsonTestResult[] }[] }[];
 }
 
 interface PlaywrightJsonReport {
   suites?: PlaywrightJsonSuite[];
+}
+
+const INFRASTRUCTURE_ERROR_PATTERNS = [
+  /Cannot find module .*config\.generated/i,
+  /workerProcessEntry/i,
+  /Failed to launch/i,
+  /browserType\.launch/i,
+  /Executable doesn't exist/i,
+  /ENOENT/i,
+  /EACCES/i,
+  /ERR_MODULE_NOT_FOUND/i,
+];
+
+export function stageApprovedTests(testDir: string, outputDir: string, approvedTestFiles: string[] | undefined): string {
+  if (!approvedTestFiles || approvedTestFiles.length === 0) {
+    return testDir;
+  }
+
+  const stagedDir = path.join(outputDir, 'approved-tests');
+  fs.rmSync(stagedDir, { recursive: true, force: true });
+  fs.mkdirSync(stagedDir, { recursive: true });
+
+  for (const sourcePath of approvedTestFiles) {
+    fs.copyFileSync(sourcePath, path.join(stagedDir, path.basename(sourcePath)));
+  }
+
+  return stagedDir;
 }
 
 export interface PlaywrightExecutionPlan {
@@ -49,29 +92,6 @@ export interface PlaywrightExecutionPlan {
   configPath: string;
   configTestDir: string;
   configOutputDir: string;
-}
-
-function countResults(report: PlaywrightJsonReport): ExecutionSummary {
-  let total = 0;
-  let passed = 0;
-  let failed = 0;
-
-  function walk(suite: PlaywrightJsonSuite | undefined) {
-    if (!suite) return;
-    for (const spec of suite.specs ?? []) {
-      for (const test of spec.tests ?? []) {
-        for (const result of test.results ?? []) {
-          total += 1;
-          if (result.status === 'passed') passed += 1;
-          else failed += 1;
-        }
-      }
-    }
-    for (const child of suite.suites ?? []) walk(child);
-  }
-
-  for (const suite of report.suites ?? []) walk(suite);
-  return { total, passed, failed };
 }
 
 function writePlaywrightConfig(
@@ -117,6 +137,78 @@ async function generateAllureReport(allureResultsDir: string, allureReportDir: s
   } catch {
     return false;
   }
+}
+function collectResultMessages(result: PlaywrightJsonTestResult): string[] {
+  const messages = [];
+  if (result.error?.message) messages.push(result.error.message);
+  for (const error of result.errors ?? []) {
+    if (error.message) messages.push(error.message);
+  }
+  return messages;
+}
+
+function isInfrastructureFailure(result: PlaywrightJsonTestResult): boolean {
+  if (result.workerIndex === -1 && result.parallelIndex === -1) {
+    return true;
+  }
+
+  const messages = collectResultMessages(result).join('\n');
+  return INFRASTRUCTURE_ERROR_PATTERNS.some((pattern) => pattern.test(messages));
+}
+
+export function summarizePlaywrightReport(report: PlaywrightJsonReport): {
+  summary: ExecutionSummary;
+  infrastructureErrors: string[];
+} {
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let skipped = 0;
+  let infrastructureFailures = 0;
+  const infrastructureErrors = new Set<string>();
+
+  function walk(suite: PlaywrightJsonSuite | undefined) {
+    if (!suite) return;
+    for (const spec of suite.specs ?? []) {
+      for (const test of spec.tests ?? []) {
+        for (const result of test.results ?? []) {
+          total += 1;
+          if (result.status === 'passed') passed += 1;
+          else if (result.status === 'skipped') skipped += 1;
+          else if (isInfrastructureFailure(result)) {
+            infrastructureFailures += 1;
+            for (const message of collectResultMessages(result)) {
+              infrastructureErrors.add(message.split('\n')[0] ?? message);
+            }
+          } else {
+            failed += 1;
+          }
+        }
+      }
+    }
+    for (const child of suite.suites ?? []) walk(child);
+  }
+
+  for (const suite of report.suites ?? []) walk(suite);
+
+  return {
+    summary: {
+      total,
+      passed,
+      failed,
+      skipped,
+      infrastructureFailures,
+      failureMode:
+        infrastructureFailures > 0
+          ? failed > 0
+            ? 'mixed'
+            : 'infrastructure'
+          : failed > 0
+            ? 'assertion'
+            : 'passed',
+    },
+    infrastructureErrors: [...infrastructureErrors],
+  };
 }
 
 function toContainerPath(...segments: string[]): string {
@@ -189,12 +281,18 @@ export function buildPlaywrightExecutionPlan(params: RunPlaywrightTestsParams): 
  */
 export async function runPlaywrightTests(params: RunPlaywrightTestsParams): Promise<RunPlaywrightTestsResult> {
   fs.mkdirSync(params.outputDir, { recursive: true });
+  const executionTestDir = stageApprovedTests(params.testDir, params.outputDir, params.testFilePaths);
   const plan = buildPlaywrightExecutionPlan(params);
   // The generated config stays under `cwd` even for Docker runs so the mounted repo's own
   // `node_modules` remain the single dependency source for the config import.
   const configDir = path.dirname(plan.configPath);
   fs.mkdirSync(configDir, { recursive: true });
-  writePlaywrightConfig(plan.configTestDir, plan.configOutputDir, params.baseUrl, plan.configPath);
+  writePlaywrightConfig(
+    executionTestDir === params.testDir ? plan.configTestDir : executionTestDir,
+    plan.configOutputDir,
+    params.baseUrl,
+    plan.configPath,
+  );
 
   try {
     await execFileAsync(plan.command, plan.args, plan.execOptions);
@@ -204,13 +302,11 @@ export async function runPlaywrightTests(params: RunPlaywrightTestsParams): Prom
     if (!fs.existsSync(reportPath)) {
       throw err instanceof Error ? err : new Error(String(err));
     }
-  } finally {
-    fs.rmSync(plan.configPath, { force: true });
   }
 
   const reportJsonPath = path.join(params.outputDir, 'report.json');
   const report = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8')) as PlaywrightJsonReport;
-  const summary = countResults(report);
+  const { summary, infrastructureErrors } = summarizePlaywrightReport(report);
 
   const allureResultsDir = path.join(params.outputDir, 'allure-results');
   const allureReportDir = path.join(params.outputDir, 'allure');
@@ -228,5 +324,6 @@ export async function runPlaywrightTests(params: RunPlaywrightTestsParams): Prom
     reportJunitPath: toWorkspaceRelative(path.join(params.outputDir, 'report.junit.xml')),
     reportAllurePath: allureGenerated ? toWorkspaceRelative(allureReportDir) : undefined,
     summary,
+    infrastructureErrors,
   };
 }

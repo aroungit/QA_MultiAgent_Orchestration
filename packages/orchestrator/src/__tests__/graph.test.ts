@@ -143,7 +143,14 @@ describe('orchestrator graph', () => {
     expect(afterAutomation.currentPhase).toBe('finalize_run');
     expect(afterAutomation.testCases.hitlStatus).toBe('approved');
     expect(afterAutomation.automation.generatedTestFiles).toHaveLength(1);
-    expect(afterAutomation.execution.summary).toEqual({ total: 1, passed: 0, failed: 1 });
+    expect(afterAutomation.execution.summary).toEqual({
+      total: 1,
+      passed: 0,
+      failed: 1,
+      skipped: 0,
+      infrastructureFailures: 0,
+      failureMode: 'assertion',
+    });
   }, 30000);
 
   it('pauses at hitl_automation when enableHITLAutomation is true', async () => {

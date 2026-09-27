@@ -57,6 +57,10 @@ describe('agent1Requirements', () => {
               description: 'Users can log in with valid credentials.',
               testable: true,
               tags: ['auth'],
+              comments: ['Use the seeded reviewer account.'],
+              notes: ['Keep MFA out of scope for v1.'],
+              exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+              testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
             },
             {
               requirementId: 'REQ-002',
@@ -92,6 +96,8 @@ describe('agent1Requirements', () => {
     );
     expect(writtenJson.runId).toBe('run-agent1');
     expect(writtenJson.requirements).toHaveLength(2);
+    expect(writtenJson.requirements[0].exampleValues).toEqual([{ label: 'Username', value: 'qa.user@example.com' }]);
+    expect(writtenJson.requirements[0].testData).toEqual([{ label: 'Password', value: 'P@ssw0rd!' }]);
 
     const writtenSummary = fs.readFileSync(
       path.join(tempWorkspaceRoot, 'run-agent1', 'requirements', 'summary.md'),
@@ -99,6 +105,8 @@ describe('agent1Requirements', () => {
     );
     expect(writtenSummary).toContain('REQ-001: Login');
     expect(writtenSummary).toContain('REQ-002: Timeout');
+    expect(writtenSummary).toContain('Username: qa.user@example.com');
+    expect(writtenSummary).toContain('Password: P@ssw0rd!');
   });
 
   it('throws when the run has no raw text input', async () => {

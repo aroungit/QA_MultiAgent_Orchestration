@@ -33,6 +33,10 @@ const REQUIREMENTS_DOC = {
       description: 'Users can log in with valid credentials.',
       testable: true,
       tags: ['auth'],
+      comments: ['Use the approved reviewer account.'],
+      notes: ['Keep the same seeded password across environments.'],
+      exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+      testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
     },
     {
       requirementId: 'REQ-002',
@@ -87,6 +91,10 @@ describe('agent2Testcases', () => {
             traceability: ['REQ-001'],
             priority: 'high',
             tags: ['auth'],
+            comments: ['Use the approved reviewer account.'],
+            notes: ['Keep the same seeded password across environments.'],
+            exampleValues: [{ label: 'Username', value: 'qa.user@example.com' }],
+            testData: [{ label: 'Password', value: 'P@ssw0rd!' }],
           },
           {
             testCaseId: 'TC-002',
@@ -119,6 +127,8 @@ describe('agent2Testcases', () => {
     );
     expect(writtenJson.runId).toBe('run-agent2');
     expect(writtenJson.testCases).toHaveLength(2);
+    expect(writtenJson.testCases[0].exampleValues).toEqual([{ label: 'Username', value: 'qa.user@example.com' }]);
+    expect(writtenJson.testCases[0].testData).toEqual([{ label: 'Password', value: 'P@ssw0rd!' }]);
 
     const writtenSummary = fs.readFileSync(
       path.join(tempWorkspaceRoot, 'run-agent2', 'testcases', 'testcases_summary.md'),
@@ -126,6 +136,8 @@ describe('agent2Testcases', () => {
     );
     expect(writtenSummary).toContain('TC-001: Successful login');
     expect(writtenSummary).toContain('TC-002: Session expires after inactivity');
+    expect(writtenSummary).toContain('Username: qa.user@example.com');
+    expect(writtenSummary).toContain('Password: P@ssw0rd!');
   });
 
   it('throws when there is no approved requirements.json to consume', async () => {
